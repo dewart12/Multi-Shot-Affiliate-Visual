@@ -187,7 +187,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex bg-[#0a0a0b] text-zinc-100 font-sans selection:bg-blue-500/30">
-      <aside className="w-80 bg-[#0f0f11] border-r border-white/5 flex flex-col p-8 z-50">
+      <aside className="w-80 bg-[#0f0f11] border-r border-white/5 flex flex-col p-8 z-50 h-screen sticky top-0">
         <div className="flex items-center gap-3 mb-20 group cursor-pointer" onClick={() => window.location.reload()}>
           <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(37,99,235,0.4)] group-hover:scale-105 transition-transform">
             <i className="fa-solid fa-bolt-lightning text-white text-sm"></i>
@@ -215,7 +215,7 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 relative overflow-y-auto bg-[#0a0a0b]">
+      <main className="flex-1 relative bg-[#0a0a0b]">
         {/* REWORKED LOADING UI */}
         {(loadingMsg || retryMsg) && (
           <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/95 backdrop-blur-3xl px-10">
@@ -330,14 +330,22 @@ const App: React.FC = () => {
                   <h2 className="text-5xl font-extrabold tracking-tight uppercase leading-none">Output <span className="text-blue-500">Vault</span></h2>
                   <p className="text-[11px] font-bold text-zinc-600 uppercase tracking-[0.5em]">Final Shot Selection</p>
                 </div>
-                <div className="text-right space-y-3">
-                  <span className="text-[11px] font-bold text-blue-500 uppercase tracking-widest">Extraction Progress</span>
-                  <div className="w-48 h-2 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
-                    <div className="h-full bg-blue-600 transition-all duration-1000 progress-shimmer" style={{ width: `${state.extractionProgress}%` }}></div>
+                <div className="flex items-center gap-8">
+                  {state.storyboardGrid && (
+                    <div className="hidden lg:block w-24 aspect-[9/16] rounded-xl overflow-hidden border border-white/10 shadow-2xl">
+                      <img src={state.storyboardGrid} className="w-full h-full object-cover opacity-50 hover:opacity-100 transition-opacity cursor-pointer" title="Master Reference" />
+                    </div>
+                  )}
+                  <div className="text-right space-y-3">
+                    <span className="text-[11px] font-bold text-blue-500 uppercase tracking-widest">Extraction Progress</span>
+                    <div className="w-48 h-2 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
+                      <div className="h-full bg-blue-600 transition-all duration-1000 progress-shimmer" style={{ width: `${state.extractionProgress}%` }}></div>
+                    </div>
                   </div>
                 </div>
               </div>
 
+              {/* Grid layout is strictly max 3 columns */}
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {state.scenes.map((scene, idx) => (
                   <div key={scene.id} className="bg-[#0f0f11] p-6 rounded-[2.5rem] border border-white/5 flex flex-col group">
