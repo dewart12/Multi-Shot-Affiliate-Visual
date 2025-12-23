@@ -19,9 +19,9 @@ declare global {
 }
 
 const App: React.FC = () => {
-  const [isActivated, setIsActivated] = useState<boolean>(false);
   const [step, setStep] = useState<AppStep>(AppStep.UPLOAD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [keyStatus, setKeyStatus] = useState<'DETECTED' | 'MISSING'>('MISSING');
   
   const [state, setState] = useState<GenerationState>({
     modelImage: null,
@@ -54,29 +54,25 @@ const App: React.FC = () => {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const progressIntervalRef = useRef<number | null>(null);
 
-  // Cek awal apakah sudah ada key
+  // Cek status key secara berkala tanpa memblokir UI
   useEffect(() => {
-    const checkInitial = async () => {
-      if (process.env.API_KEY && process.env.API_KEY !== 'undefined') {
-        setIsActivated(true);
-      } else if (window.aistudio?.hasSelectedApiKey) {
-        const has = await window.aistudio.hasSelectedApiKey();
-        if (has) setIsActivated(true);
-      }
+    const check = async () => {
+      const hasKey = (process.env.API_KEY && process.env.API_KEY !== 'undefined' && process.env.API_KEY.length > 5) || 
+                     (await window.aistudio?.hasSelectedApiKey?.());
+      setKeyStatus(hasKey ? 'DETECTED' : 'MISSING');
     };
-    checkInitial();
+    check();
+    const timer = setInterval(check, 3000);
+    return () => clearInterval(timer);
   }, []);
 
-  const handleActivate = async () => {
-    // TRIGGER JENDELA PEMILIHAN
+  const handleOpenKeyPicker = async () => {
     if (window.aistudio?.openSelectKey) {
-      window.aistudio.openSelectKey();
+      await window.aistudio.openSelectKey();
+      setError(null);
+    } else {
+      setError("Sistem Google AI Studio tidak terdeteksi. Gunakan Chrome.");
     }
-    
-    // ATURAN RACE CONDITION: Langsung anggap sukses dan masuk ke dashboard
-    // Ini menjamin tombol "ada reaksi" dan user tidak terjebak di landing page
-    setIsActivated(true);
-    setError(null);
   };
 
   const startProgress = () => {
@@ -95,9 +91,7 @@ const App: React.FC = () => {
       progressIntervalRef.current = null;
     }
     setLoadingProgress(100);
-    setTimeout(() => {
-      setLoadingProgress(0);
-    }, 500);
+    setTimeout(() => setLoadingProgress(0), 500);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'model' | 'product') => {
@@ -114,9 +108,8 @@ const App: React.FC = () => {
 
   const handleError = (err: any) => {
     const msg = err.message || "Terjadi kendala teknis.";
-    // Jika API Key hilang saat proses, kembalikan ke pemilihan key
     if (msg.includes("API_KEY_MISSING") || msg.includes("Requested entity was not found")) {
-      setError("DIBLOKIR: Google memerlukan Project Key. Silakan klik tombol 'PILIH PROJECT' untuk mengaktifkan.");
+      setError("PROJECT BELUM TERHUBUNG: Silakan klik tombol 'PILIH PROJECT' di bagian atas.");
     } else {
       setError(msg);
     }
@@ -193,30 +186,6 @@ const App: React.FC = () => {
     }
   };
 
-  if (!isActivated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#080809] p-6 relative">
-        <div className="absolute top-0 left-0 w-full h-full bg-blue-600/5 blur-[120px] pointer-events-none"></div>
-        <div className="max-w-md w-full glass p-10 sm:p-14 rounded-[3.5rem] border border-white/5 text-center animate-up relative z-10 shadow-2xl">
-          <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-cyan-400 rounded-3xl mx-auto flex items-center justify-center mb-8 rotate-6 shadow-xl">
-            <i className="fa-solid fa-crown text-3xl text-white"></i>
-          </div>
-          <h1 className="text-3xl font-black mb-3 tracking-tighter uppercase leading-none">Gemini 3 Pro <br/><span className="text-blue-500">Production Mode</span></h1>
-          <p className="text-zinc-500 text-sm mb-10 leading-relaxed">Pilih Project Google Cloud Anda untuk akses Tier 1 (Cepat) atau Free Tier.</p>
-          
-          <button onClick={handleActivate} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black transition-all uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20 active:scale-95">MASUK KE DASHBOARD</button>
-          
-          <div className="mt-8 flex flex-col gap-4">
-            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest hover:text-blue-400 transition-colors">
-              Tutorial Aktivasi Billing <i className="fa-solid fa-external-link ml-1"></i>
-            </a>
-            <p className="text-[8px] text-zinc-700 uppercase font-black tracking-widest">Penanganan API Key dikelola sepenuhnya oleh Google Cloud</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const steps = [
     { id: AppStep.UPLOAD, label: 'Upload Assets', icon: 'fa-cloud-arrow-up', isUnlocked: true },
     { id: AppStep.REFINE, label: 'Refine & Text', icon: 'fa-wand-magic-sparkles', isUnlocked: !!state.combinedImage },
@@ -240,8 +209,14 @@ const App: React.FC = () => {
               </button>
             ))}
           </nav>
-          <div className="pt-8 border-t border-white/5">
-             <button onClick={handleActivate} className="w-full py-4 text-[10px] font-black text-blue-500 border border-blue-500/20 uppercase tracking-widest hover:bg-blue-500/10 rounded-xl transition-all"><i className="fa-solid fa-key mr-2"></i> Ganti Project Key</button>
+          <div className="pt-8 border-t border-white/5 space-y-4">
+             <div className="flex items-center justify-between px-2 mb-2">
+                <span className="text-[8px] font-black uppercase text-zinc-500 tracking-widest">Key Status</span>
+                <span className={`text-[8px] font-black uppercase tracking-widest ${keyStatus === 'DETECTED' ? 'text-green-500' : 'text-red-500'}`}>{keyStatus}</span>
+             </div>
+             <button onClick={handleOpenKeyPicker} className="w-full py-4 text-[10px] font-black text-blue-500 border border-blue-500/20 uppercase tracking-widest hover:bg-blue-500/10 rounded-xl transition-all flex items-center justify-center gap-2">
+                <i className="fa-solid fa-key"></i> Hubungkan Project
+             </button>
           </div>
         </div>
       </aside>
@@ -254,7 +229,7 @@ const App: React.FC = () => {
               <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
               <div className="absolute inset-0 flex items-center justify-center font-black text-xl text-blue-400">{Math.floor(loadingProgress)}%</div>
             </div>
-            <p className="text-2xl font-black gradient-text uppercase tracking-tighter mb-4 text-center">{loadingMsg || 'Memproses...'}</p>
+            <p className="text-2xl font-black gradient-text uppercase tracking-tighter mb-4 text-center">{loadingMsg || 'Sabar dulu bos...'}</p>
             {retryMsg && <p className="text-blue-400/80 text-[11px] font-black uppercase tracking-[0.2em] animate-pulse bg-blue-500/5 px-6 py-2 rounded-full border border-blue-500/10">{retryMsg}</p>}
           </div>
         )}
@@ -266,11 +241,11 @@ const App: React.FC = () => {
                 <i className="fa-solid fa-triangle-exclamation text-2xl"></i>
                 <div>
                     <p className="text-[11px] font-black uppercase tracking-widest mb-1">{error}</p>
-                    <p className="text-[9px] font-medium opacity-60">Jendela Project mungkin tidak sengaja tertutup atau Project Anda belum memiliki API Gemini aktif.</p>
+                    <p className="text-[9px] font-medium opacity-60">Pastikan Anda memilih project yang sudah memiliki billing aktif.</p>
                 </div>
               </div>
               <div className="flex gap-4">
-                <button onClick={handleActivate} className="px-8 py-4 bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-400 transition-all shadow-xl">PILIH PROJECT</button>
+                <button onClick={handleOpenKeyPicker} className="px-8 py-4 bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-400 transition-all shadow-xl">PILIH PROJECT</button>
                 <button onClick={() => setError(null)} className="p-4 text-red-400/50 hover:text-red-400 transition-colors">&times;</button>
               </div>
             </div>

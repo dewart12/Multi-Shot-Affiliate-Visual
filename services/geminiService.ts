@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 
 const PRO_IMAGE_MODEL = 'gemini-3-pro-image-preview';
@@ -13,14 +12,14 @@ async function callWithRetry<T>(fn: () => Promise<T>, onRetry?: (msg: string) =>
       return await fn();
     } catch (error: any) {
       lastError = error;
-      const errorStr = JSON.stringify(error) || error.message || "";
+      const errorStr = (error.message || "").toLowerCase();
       
-      // Jika error "Requested entity was not found", kemungkinan besar API Key bermasalah/belum dipilih
-      if (errorStr.includes("Requested entity was not found")) {
-        throw new Error("API_KEY_RESET_REQUIRED");
+      // Jika error 404/Not Found, kemungkinan besar key belum aktif/dipilih
+      if (errorStr.includes("not found") || errorStr.includes("api_key_missing")) {
+        throw new Error("API_KEY_MISSING");
       }
 
-      if (errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("500") || errorStr.includes("503")) {
+      if (errorStr.includes("429") || errorStr.includes("resource_exhausted") || errorStr.includes("500") || errorStr.includes("503")) {
         const waitTime = (attempt + 1) * 12000; 
         if (onRetry) onRetry(`Server Pro Padat. Menunggu jatah (${waitTime/1000}s)...`);
         await sleep(waitTime);
@@ -34,7 +33,8 @@ async function callWithRetry<T>(fn: () => Promise<T>, onRetry?: (msg: string) =>
 
 const getAI = () => {
   const key = process.env.API_KEY;
-  if (!key) throw new Error("API_KEY_MISSING");
+  if (!key || key === 'undefined') throw new Error("API_KEY_MISSING");
+  // Selalu buat instance baru untuk memastikan key terbaru dari dialog Google terbaca
   return new GoogleGenAI({ apiKey: key });
 };
 
