@@ -54,50 +54,29 @@ const App: React.FC = () => {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const progressIntervalRef = useRef<number | null>(null);
 
-  const checkKeyStatus = async () => {
-    if (process.env.API_KEY && process.env.API_KEY !== 'undefined' && process.env.API_KEY.length > 5) {
-      setIsActivated(true);
-      setError(null);
-      return true;
-    }
-    if (window.aistudio?.hasSelectedApiKey) {
-      try {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (hasKey) {
-          setIsActivated(true);
-          setError(null);
-          return true;
-        }
-      } catch (e) {
-        console.debug("API check failed");
-      }
-    }
-    return false;
-  };
-
+  // Cek awal apakah sudah ada key
   useEffect(() => {
-    checkKeyStatus();
+    const checkInitial = async () => {
+      if (process.env.API_KEY && process.env.API_KEY !== 'undefined') {
+        setIsActivated(true);
+      } else if (window.aistudio?.hasSelectedApiKey) {
+        const has = await window.aistudio.hasSelectedApiKey();
+        if (has) setIsActivated(true);
+      }
+    };
+    checkInitial();
   }, []);
 
   const handleActivate = async () => {
-    setLoadingMsg("Membuka Jendela Project...");
-    try {
-      if (window.aistudio?.openSelectKey) {
-        // Panggil dialog resmi
-        await window.aistudio.openSelectKey();
-        setLoadingMsg("Sinkronisasi Project...");
-        // Beri jeda sebentar agar variabel terinjeksi
-        await new Promise(r => setTimeout(r, 1000));
-        await checkKeyStatus();
-      } else {
-        throw new Error("Sistem Dialog Google tidak terdeteksi di browser ini. Gunakan Chrome atau cek ekstensi pemblokir iklan Anda.");
-      }
-    } catch (e: any) {
-      setError(e.message || "Gagal memicu dialog project.");
-    } finally {
-      setLoadingMsg('');
-      setIsActivated(true); // Tetap masuk ke dashboard sebagai bypass
+    // TRIGGER JENDELA PEMILIHAN
+    if (window.aistudio?.openSelectKey) {
+      window.aistudio.openSelectKey();
     }
+    
+    // ATURAN RACE CONDITION: Langsung anggap sukses dan masuk ke dashboard
+    // Ini menjamin tombol "ada reaksi" dan user tidak terjebak di landing page
+    setIsActivated(true);
+    setError(null);
   };
 
   const startProgress = () => {
@@ -135,8 +114,9 @@ const App: React.FC = () => {
 
   const handleError = (err: any) => {
     const msg = err.message || "Terjadi kendala teknis.";
+    // Jika API Key hilang saat proses, kembalikan ke pemilihan key
     if (msg.includes("API_KEY_MISSING") || msg.includes("Requested entity was not found")) {
-      setError("DIBLOKIR: Google memerlukan Project Key. Klik tombol merah di bawah untuk memilih project.");
+      setError("DIBLOKIR: Google memerlukan Project Key. Silakan klik tombol 'PILIH PROJECT' untuk mengaktifkan.");
     } else {
       setError(msg);
     }
@@ -222,25 +202,16 @@ const App: React.FC = () => {
             <i className="fa-solid fa-crown text-3xl text-white"></i>
           </div>
           <h1 className="text-3xl font-black mb-3 tracking-tighter uppercase leading-none">Gemini 3 Pro <br/><span className="text-blue-500">Production Mode</span></h1>
-          <p className="text-zinc-500 text-sm mb-10 leading-relaxed">Klik tombol di bawah untuk memilih Project Google Cloud Anda melalui jendela resmi.</p>
+          <p className="text-zinc-500 text-sm mb-10 leading-relaxed">Pilih Project Google Cloud Anda untuk akses Tier 1 (Cepat) atau Free Tier.</p>
           
-          <button onClick={handleActivate} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black transition-all uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20 active:scale-95 mb-6">PILIH PROJECT SEKARANG</button>
+          <button onClick={handleActivate} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black transition-all uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20 active:scale-95">MASUK KE DASHBOARD</button>
           
-          <div className="flex flex-col gap-4">
+          <div className="mt-8 flex flex-col gap-4">
             <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest hover:text-blue-400 transition-colors">
-              Panduan Aktivasi Billing <i className="fa-solid fa-external-link ml-1"></i>
+              Tutorial Aktivasi Billing <i className="fa-solid fa-external-link ml-1"></i>
             </a>
+            <p className="text-[8px] text-zinc-700 uppercase font-black tracking-widest">Penanganan API Key dikelola sepenuhnya oleh Google Cloud</p>
           </div>
-
-          {error && (
-            <div className="mt-8 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
-              <p className="text-red-400 text-[9px] font-black uppercase tracking-widest mb-3 leading-relaxed">{error}</p>
-              <div className="flex flex-col gap-2">
-                <button onClick={handleActivate} className="text-[9px] font-black text-white bg-red-600 py-2 rounded-lg uppercase">Coba Lagi</button>
-                <button onClick={() => setIsActivated(true)} className="text-[8px] font-black text-zinc-500 uppercase underline">Lanjut Ke Dashboard (Hanya View)</button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -269,9 +240,8 @@ const App: React.FC = () => {
               </button>
             ))}
           </nav>
-          <div className="pt-8 border-t border-white/5 space-y-4">
-             <button onClick={handleActivate} className="w-full py-4 text-[10px] font-black text-blue-500 border border-blue-500/20 uppercase tracking-widest hover:bg-blue-500/10 rounded-xl transition-all flex items-center justify-center gap-3"><i className="fa-solid fa-key"></i> Pilih Project Baru</button>
-             <button onClick={checkKeyStatus} className="w-full py-4 text-[9px] font-black text-zinc-500 uppercase tracking-widest hover:text-white transition-all"><i className="fa-solid fa-sync-alt mr-2"></i> Sinkronisasi Ulang Key</button>
+          <div className="pt-8 border-t border-white/5">
+             <button onClick={handleActivate} className="w-full py-4 text-[10px] font-black text-blue-500 border border-blue-500/20 uppercase tracking-widest hover:bg-blue-500/10 rounded-xl transition-all"><i className="fa-solid fa-key mr-2"></i> Ganti Project Key</button>
           </div>
         </div>
       </aside>
@@ -284,23 +254,23 @@ const App: React.FC = () => {
               <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
               <div className="absolute inset-0 flex items-center justify-center font-black text-xl text-blue-400">{Math.floor(loadingProgress)}%</div>
             </div>
-            <p className="text-2xl font-black gradient-text uppercase tracking-tighter mb-4 text-center">{loadingMsg || 'Sabar dulu bos...'}</p>
+            <p className="text-2xl font-black gradient-text uppercase tracking-tighter mb-4 text-center">{loadingMsg || 'Memproses...'}</p>
             {retryMsg && <p className="text-blue-400/80 text-[11px] font-black uppercase tracking-[0.2em] animate-pulse bg-blue-500/5 px-6 py-2 rounded-full border border-blue-500/10">{retryMsg}</p>}
           </div>
         )}
 
         <div className="max-w-[1400px] mx-auto pb-32">
           {error && (
-            <div className="mb-8 p-6 bg-red-500/10 border border-red-500/20 text-red-400 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6 animate-up shadow-2xl shadow-red-500/5">
+            <div className="mb-8 p-6 bg-red-500/10 border border-red-500/20 text-red-400 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6 animate-up">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-red-500/20 rounded-2xl flex items-center justify-center text-xl"><i className="fa-solid fa-triangle-exclamation"></i></div>
+                <i className="fa-solid fa-triangle-exclamation text-2xl"></i>
                 <div>
                     <p className="text-[11px] font-black uppercase tracking-widest mb-1">{error}</p>
-                    <p className="text-[9px] font-medium opacity-60">Pastikan Anda memilih project yang sudah memiliki billing aktif di jendela dialog Google.</p>
+                    <p className="text-[9px] font-medium opacity-60">Jendela Project mungkin tidak sengaja tertutup atau Project Anda belum memiliki API Gemini aktif.</p>
                 </div>
               </div>
-              <div className="flex gap-4 w-full md:w-auto">
-                <button onClick={handleActivate} className="flex-1 md:flex-none px-8 py-4 bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-400 transition-all shadow-xl shadow-red-500/20">BUKA DIALOG PROJECT</button>
+              <div className="flex gap-4">
+                <button onClick={handleActivate} className="px-8 py-4 bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-400 transition-all shadow-xl">PILIH PROJECT</button>
                 <button onClick={() => setError(null)} className="p-4 text-red-400/50 hover:text-red-400 transition-colors">&times;</button>
               </div>
             </div>
@@ -318,7 +288,7 @@ const App: React.FC = () => {
                 </div>
               ))}
               <div className="lg:col-span-2 flex justify-center pt-8">
-                <button disabled={!state.modelImage || !state.productImage} onClick={startProcessing} className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 px-20 py-7 rounded-3xl font-black uppercase tracking-[0.3em] shadow-2xl transition-all active:scale-95">Mulai Produksi Pro</button>
+                <button disabled={!state.modelImage || !state.productImage} onClick={startProcessing} className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 px-20 py-7 rounded-3xl font-black uppercase tracking-[0.3em] shadow-2xl transition-all">Mulai Produksi Pro</button>
               </div>
             </div>
           )}
