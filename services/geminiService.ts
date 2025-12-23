@@ -1,12 +1,50 @@
 
 import { GoogleGenAI } from "@google/genai";
 
+// Nano Banana Pro mapping per guidelines
 const PRO_MODEL = 'gemini-3-pro-image-preview';
-const FLASH_MODEL = 'gemini-2.5-flash-image';
 const VEO_MODEL = 'veo-3.1-fast-generate-preview';
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Robust API wrapper to handle 429 Resource Exhausted errors.
+ */
+async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 6): Promise<T> {
+  let lastError: any;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const errorStr = JSON.stringify(error) || error.message || "";
+      
+      if (errorStr.includes("429") || errorStr.includes("RESOURCE_REHAUSTED") || errorStr.includes("quota")) {
+        console.warn(`[AI SERVICE] Quota limit hit (Attempt ${attempt + 1}/${maxRetries}).`);
+        
+        let waitTime = Math.pow(2, attempt) * 20000;
+        const retryMatch = errorStr.match(/retry in ([\d\.]+)s/i);
+        if (retryMatch && retryMatch[1]) {
+          waitTime = (parseFloat(retryMatch[1]) + 5) * 1000;
+        }
+        
+        console.log(`[AI SERVICE] Sleeping for ${Math.round(waitTime / 1000)}s...`);
+        await sleep(waitTime);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
 
 export const checkApiKey = async (): Promise<boolean> => {
   try {
+    // For local development or cases where API_KEY is already injected
+    if (process.env.API_KEY && process.env.API_KEY !== "") {
+      return true;
+    }
+    // For hosted environment with aistudio helpers
     if (typeof window.aistudio?.hasSelectedApiKey === 'function') {
       return await window.aistudio.hasSelectedApiKey();
     }
@@ -23,153 +61,152 @@ export const openApiKeySelector = async () => {
 };
 
 export const generateCombinedImage = async (modelBase64: string, productBase64: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: PRO_MODEL,
-    contents: {
-      parts: [
-        { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } },
-        { inlineData: { data: productBase64.split(',')[1], mimeType: 'image/png' } },
-        { text: "EXPERT DIGITAL COMPOSITING TASK: Dress the model in the Mukena garment. Maintain 100% identity. 9:16 vertical format." }
-      ]
-    },
-    config: {
-      imageConfig: {
-        aspectRatio: "9:16",
-        imageSize: "1K"
+  return callWithRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: PRO_MODEL,
+      contents: {
+        parts: [
+          { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } },
+          { inlineData: { data: productBase64.split(',')[1], mimeType: 'image/png' } },
+          { text: "DIGITAL COMPOSITING: Fit the Mukena garment onto the model. Maintain 100% identity and anatomy. Vertical 9:16 format." }
+        ]
+      },
+      config: {
+        imageConfig: { aspectRatio: "9:16", imageSize: "1K" }
       }
-    }
-  });
+    });
 
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
-    if (part.inlineData) {
-      return `data:image/png;base64,${part.inlineData.data}`;
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-  }
-  throw new Error("Failed to generate combined image");
+    throw new Error("Failed to generate base image");
+  });
 };
 
 export const refineAndCustomize = async (image: string, background: string, backgroundRef: string, lightingRef: string, neonText: string, fontStyle: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: PRO_MODEL,
-    contents: {
-      parts: [
-        { inlineData: { data: image.split(',')[1], mimeType: 'image/png' } },
-        { text: `PROFESSIONAL SCENE EXTENSION: 
-        1. BACKGROUND: ${background}. Style: ${backgroundRef}.
-        2. LIGHTING: ${lightingRef}.
-        3. NEON BRANDING: Signage "${neonText}". Style: ${fontStyle}. 
-           - PLACEMENT: Behind model. Medium size, clearly visible but balanced.
-        4. 9:16 4K vertical master.` }
-      ]
-    },
-    config: {
-      imageConfig: { aspectRatio: "9:16", imageSize: "1K" }
-    }
-  });
+  return callWithRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: PRO_MODEL,
+      contents: {
+        parts: [
+          { inlineData: { data: image.split(',')[1], mimeType: 'image/png' } },
+          { text: `ENVIRONMENT SCENE: 
+          1. BACKGROUND: ${background}. Style Ref: ${backgroundRef}.
+          2. LIGHTING: ${lightingRef}.
+          3. NEON BRANDING: Text "${neonText}". Style: ${fontStyle}. 
+             - POSITION: Placed behind the subject, balanced size, high legibility.
+          4. FORMAT: 9:16 vertical 1K resolution.` }
+        ]
+      },
+      config: {
+        imageConfig: { aspectRatio: "9:16", imageSize: "1K" }
+      }
+    });
 
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
-    if (part.inlineData) {
-      return `data:image/png;base64,${part.inlineData.data}`;
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-  }
-  throw new Error("Failed to customize image");
+    throw new Error("Failed to refine image");
+  });
 };
 
-export const generateStoryboardGrid = async (baseImage: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const storyboardPrompt = `HIGH-RESOLUTION 3x3 VERTICAL STORYBOARD GRID (9:16).
-  Generate a single 3x3 grid of 9 scenes.
-  
-  CONSISTENCY RULES:
-  - Background and lighting must be IDENTICAL in all 9 cells.
-  - The neon branding "${baseImage}" must stay consistent in the same background position. Not too big, balanced legibility.
-  - Grid lines must be thin, black, and perfectly straight.
-  
-  SCENE POSES: 1.Front 2.Side 3.Daily 4.Length 5.Detail 6.Flow 7.Back 8.Sitting 9.Closing.
-  Output: 2K resolution 9:16 vertical grid.`;
+export const generateStoryboardGrid = async (baseImage: string, neonText: string): Promise<string> => {
+  return callWithRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const storyboardPrompt = `NANO BANANA PRO - 3x3 STORYBOARD TASK:
+    Generate a 3x3 vertical grid (9:16 total ratio). Each cell should be a 9:16 vertical pose.
+    
+    CONSISTENCY REQUIREMENTS:
+    - BACKGROUND/LIGHTING: Keep identical to the reference.
+    - BRANDING: The neon sign "${neonText}" must be visible in the background of all 9 frames.
+    - MODEL: Maintain the exact same model identity and Mukena style.
+    - POSES: 9 varied cinematic poses (Front, Profile, Detail, Fabric Flow, Sitting, etc.)
+    - GRID: Thin, clear lines separating the 9 boxes.
+    Output: 2K High Resolution Grid.`;
 
-  const response = await ai.models.generateContent({
-    model: PRO_MODEL,
-    contents: {
-      parts: [
-        { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
-        { text: storyboardPrompt }
-      ]
-    },
-    config: {
-      imageConfig: { aspectRatio: "9:16", imageSize: "2K" }
+    const response = await ai.models.generateContent({
+      model: PRO_MODEL,
+      contents: {
+        parts: [
+          { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
+          { text: storyboardPrompt }
+        ]
+      },
+      config: {
+        imageConfig: { aspectRatio: "9:16", imageSize: "2K" }
+      }
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
+    throw new Error("Failed to generate storyboard grid");
   });
-
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
-    if (part.inlineData) {
-      return `data:image/png;base64,${part.inlineData.data}`;
-    }
-  }
-  throw new Error("Failed to generate storyboard grid");
 };
 
 export const extractCell = async (gridImage: string, index: number): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const cellPositions = [
-    "top-left", "top-center", "top-right",
-    "middle-left", "center", "middle-right",
-    "bottom-left", "bottom-center", "bottom-right"
-  ];
-  
-  const prompt = `Extract ONLY the ${cellPositions[index]} cell of this 3x3 image grid.
-  Rules:
-  - Crop exactly one cell (${cellPositions[index]})
-  - No resize, no padding, no border
-  - Keep original sharpness and color
-  - Output as PNG
-  - ONE IMAGE ONLY.
-  - EXTREME PRECISION: Do not show parts of adjacent cells or grid lines.`;
+  return callWithRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const cellPositions = [
+      "top-left", "top-center", "top-right",
+      "middle-left", "center-middle", "middle-right",
+      "bottom-left", "bottom-center", "bottom-right"
+    ];
+    
+    const prompt = `URGENT CROP & ZOOM TASK: 
+    From the provided 3x3 storyboard grid, you must extract ONLY the ${cellPositions[index]} cell. 
+    Focus entirely on that specific individual frame. 
+    
+    CRITICAL REQUIREMENTS:
+    1. The final output must be a SINGLE vertical 9:16 scene.
+    2. ABSOLUTELY NO grid lines, NO adjacent cells, and NO borders should be visible.
+    3. The subject and background from that specific cell must FILL THE ENTIRE 9:16 FRAME.
+    4. Do not return the whole grid. Zoom in perfectly until only one scene is visible.
+    5. Maintain 1K professional quality.`;
 
-  const response = await ai.models.generateContent({
-    model: PRO_MODEL,
-    contents: {
-      parts: [
-        { inlineData: { data: gridImage.split(',')[1], mimeType: 'image/png' } },
-        { text: prompt }
-      ]
-    },
-    config: {
-      imageConfig: { aspectRatio: "9:16", imageSize: "1K" }
+    const response = await ai.models.generateContent({
+      model: PRO_MODEL,
+      contents: {
+        parts: [
+          { inlineData: { data: gridImage.split(',')[1], mimeType: 'image/png' } },
+          { text: prompt }
+        ]
+      },
+      config: {
+        imageConfig: { aspectRatio: "9:16", imageSize: "1K" }
+      }
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
+    throw new Error(`Failed to extract cell`);
   });
-
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
-    if (part.inlineData) {
-      return `data:image/png;base64,${part.inlineData.data}`;
-    }
-  }
-  throw new Error(`Failed to extract cell ${index + 1}`);
 };
 
 export const upscaleScene = async (imageBase64: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: PRO_MODEL,
-    contents: {
-      parts: [
-        { inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } },
-        { text: "UPSCALE TO 2K RESOLUTION. Enhance details, sharpness, and clean up artifacts while maintaining original aesthetics. Return only the upscaled 9:16 image." }
-      ]
-    },
-    config: {
-      imageConfig: { aspectRatio: "9:16", imageSize: "2K" }
-    }
-  });
+  return callWithRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: PRO_MODEL,
+      contents: {
+        parts: [
+          { inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } },
+          { text: "UPSCALE 2K: Enhance sharpness and textures. Maintain 100% identity. Output 2K 9:16. Ensure the image fills the entire frame with no black borders." }
+        ]
+      },
+      config: {
+        imageConfig: { aspectRatio: "9:16", imageSize: "2K" }
+      }
+    });
 
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
-    if (part.inlineData) {
-      return `data:image/png;base64,${part.inlineData.data}`;
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-  }
-  throw new Error("Upscale failed");
+    throw new Error("Upscale failed");
+  });
 };
 
 export const generateSceneVideo = async (imageBase64: string, motionPrompt: string): Promise<string> => {

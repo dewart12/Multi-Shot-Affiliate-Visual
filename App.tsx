@@ -13,8 +13,8 @@ import {
 } from './services/geminiService';
 
 const App: React.FC = () => {
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [step, setStep] = useState<AppStep>(AppStep.UPLOAD);
-  const [hasApiKey, setHasApiKey] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   
@@ -62,10 +62,10 @@ const App: React.FC = () => {
     progressIntervalRef.current = window.setInterval(() => {
       setLoadingProgress(prev => {
         if (prev >= 98) return prev;
-        const increment = Math.max(0.1, (100 - prev) / 40);
+        const increment = Math.max(0.1, (100 - prev) / 80);
         return parseFloat((prev + increment).toFixed(1));
       });
-    }, 200);
+    }, 300);
   };
 
   const stopProgress = () => {
@@ -77,9 +77,14 @@ const App: React.FC = () => {
     setTimeout(() => setLoadingProgress(0), 500);
   };
 
-  const handleKeySelection = async () => {
-    await openApiKeySelector();
-    setHasApiKey(true);
+  const handleActivateKey = async () => {
+    try {
+      await openApiKeySelector();
+      // Per instructions: assume success after calling openSelectKey to avoid race conditions.
+      setHasApiKey(true);
+    } catch (err) {
+      setError("Gagal membuka pemilih kunci API.");
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'model' | 'product') => {
@@ -106,11 +111,11 @@ const App: React.FC = () => {
 
   const startProcessing = async () => {
     if (!state.modelImage || !state.productImage) {
-      setError("Please upload both model and product images.");
+      setError("Silakan unggah gambar model dan produk terlebih dahulu.");
       return;
     }
     setError(null);
-    setLoadingMsg("Analysing anatomy & merging assets...");
+    setLoadingMsg("Menganalisis & Menggabungkan Aset...");
     startProgress();
     try {
       const combined = await generateCombinedImage(state.modelImage, state.productImage);
@@ -118,6 +123,9 @@ const App: React.FC = () => {
       setStep(AppStep.REFINE);
     } catch (err: any) {
       setError(err.message);
+      if (err.message.includes("Requested entity was not found")) {
+        setHasApiKey(false);
+      }
     } finally {
       setLoadingMsg('');
       stopProgress();
@@ -126,7 +134,7 @@ const App: React.FC = () => {
 
   const handleRefine = async () => {
     if (!state.combinedImage) return;
-    setLoadingMsg("Architecting environment & branding...");
+    setLoadingMsg("Merancang Lingkungan...");
     startProgress();
     try {
       const refined = await refineAndCustomize(
@@ -148,10 +156,10 @@ const App: React.FC = () => {
 
   const goToStoryboard = async () => {
     if (!state.combinedImage) return;
-    setLoadingMsg("Generating 2K Sequence Grid...");
+    setLoadingMsg("Menghasilkan Grid Storyboard...");
     startProgress();
     try {
-      const grid = await generateStoryboardGrid(state.combinedImage);
+      const grid = await generateStoryboardGrid(state.combinedImage, options.neonText);
       setState(prev => ({ ...prev, storyboardGrid: grid }));
       setStep(AppStep.STORYBOARD);
     } catch (err: any) {
@@ -165,12 +173,15 @@ const App: React.FC = () => {
   const startExtraction = async () => {
     if (!state.storyboardGrid) return;
     setStep(AppStep.RESULTS);
+    setError(null);
     setState(prev => ({ ...prev, extractionProgress: 0 }));
+    
     for (let i = 0; i < 9; i++) {
       setState(prev => ({
         ...prev,
         scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: true } : s)
       }));
+      
       try {
         const img = await extractCell(state.storyboardGrid, i);
         setState(prev => ({
@@ -178,8 +189,18 @@ const App: React.FC = () => {
           scenes: prev.scenes.map(s => s.id === i ? { ...s, image: img, isExtracting: false } : s),
           extractionProgress: Math.round(((i + 1) / 9) * 100)
         }));
-      } catch (err) {
-        console.error(`Extraction failed for cell ${i}`, err);
+        
+        // Wait between extraction calls to manage rate limits
+        if (i < 8) {
+          await new Promise(resolve => setTimeout(resolve, 12000));
+        }
+        
+      } catch (err: any) {
+        setError(`Limit tercapai. Sedang mencoba kembali secara otomatis.`);
+        setState(prev => ({
+          ...prev,
+          scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: false } : s)
+        }));
       }
     }
   };
@@ -187,218 +208,225 @@ const App: React.FC = () => {
   const handleUpscale = async (id: number) => {
     const scene = state.scenes[id];
     if (!scene.image) return;
-    
-    setState(prev => ({
-      ...prev,
-      scenes: prev.scenes.map(s => s.id === id ? { ...s, isUpscaling: true } : s)
-    }));
-    
+    setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, isUpscaling: true } : s)}));
     try {
       const upscaled = await upscaleScene(scene.image);
-      setState(prev => ({
-        ...prev,
-        scenes: prev.scenes.map(s => s.id === id ? { ...s, image: upscaled, isUpscaling: false } : s)
-      }));
+      setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, image: upscaled, isUpscaling: false } : s)}));
     } catch (err: any) {
-      setError(`Upscale failed: ${err.message}`);
-      setState(prev => ({
-        ...prev,
-        scenes: prev.scenes.map(s => s.id === id ? { ...s, isUpscaling: false } : s)
-      }));
+      setError(`Upscale gagal: ${err.message}`);
+      setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, isUpscaling: false } : s)}));
     }
   };
 
   const handleGenerateVideo = async (id: number) => {
     const scene = state.scenes[id];
     if (!scene.image) return;
-    
-    setState(prev => ({
-      ...prev,
-      scenes: prev.scenes.map(s => s.id === id ? { ...s, isGeneratingVideo: true } : s)
-    }));
-    
+    setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, isGeneratingVideo: true } : s)}));
     try {
       const videoUrl = await generateSceneVideo(scene.image, scenePrompts[id]);
-      setState(prev => ({
-        ...prev,
-        scenes: prev.scenes.map(s => s.id === id ? { ...s, videoUrl, isGeneratingVideo: false } : s)
-      }));
+      setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, videoUrl, isGeneratingVideo: false } : s)}));
     } catch (err: any) {
-      setError(`Video generation failed: ${err.message}`);
-      setState(prev => ({
-        ...prev,
-        scenes: prev.scenes.map(s => s.id === id ? { ...s, isGeneratingVideo: false } : s)
-      }));
+      setError(`Video gagal: ${err.message}`);
+      setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, isGeneratingVideo: false } : s)}));
     }
   };
 
-  const steps = [
-    { id: AppStep.UPLOAD, label: 'Upload Assets', icon: 'fa-cloud-arrow-up' },
-    { id: AppStep.REFINE, label: 'Refine & Text', icon: 'fa-wand-magic-sparkles' },
-    { id: AppStep.STORYBOARD, label: 'Storyboard', icon: 'fa-border-all' },
-    { id: AppStep.RESULTS, label: 'Final Output', icon: 'fa-film' },
-  ];
-
-  if (!hasApiKey) {
+  // 1. App initialization loading
+  if (hasApiKey === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-[#0a0a0b]">
-        <div className="max-w-md w-full glass p-8 sm:p-10 rounded-3xl border border-white/5 shadow-2xl text-center">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-tr from-violet-600 to-indigo-600 rounded-2xl sm:rounded-3xl mx-auto flex items-center justify-center mb-6 sm:mb-8 rotate-3">
-            <i className="fa-solid fa-key text-2xl sm:text-3xl text-white"></i>
+      <div className="min-h-screen bg-[#0a0a0b] flex items-center justify-center">
+        <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  // 2. Strict Activation Gate Component
+  if (hasApiKey === false) {
+    return (
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[#080809] p-6">
+        <div className="fixed inset-0 bg-blue-900/10 blur-[100px] pointer-events-none"></div>
+        <div className="max-w-md w-full glass p-10 sm:p-12 rounded-[3rem] border border-blue-500/20 shadow-[0_0_80px_rgba(37,99,235,0.15)] text-center animate-up relative z-10">
+          <div className="w-24 h-24 bg-gradient-to-tr from-blue-600 to-cyan-400 rounded-3xl mx-auto flex items-center justify-center mb-10 rotate-3 shadow-[0_0_40px_rgba(37,99,235,0.4)] animate-pulse">
+            <i className="fa-solid fa-shield-halved text-4xl text-white"></i>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-black mb-4 gradient-text">VEO PRO</h1>
-          <p className="text-zinc-400 mb-8 sm:mb-10 text-base sm:text-lg leading-relaxed">Connect your AI Pro API key to access professional campaign generation tools.</p>
-          <button
-            onClick={handleKeySelection}
-            className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-4 sm:py-5 rounded-xl sm:rounded-2xl transition-all shadow-lg active:scale-95"
-          >
-            Authorize Access
-          </button>
+          <h1 className="text-3xl font-black mb-6 gradient-text tracking-tighter uppercase leading-none">Alat Terkunci</h1>
+          <p className="text-zinc-400 mb-10 text-sm sm:text-base leading-relaxed font-medium">
+            Selamat datang di <b>Multishot Affiliate AI</b>. Untuk memulai, Anda harus mengaktifkan alat ini menggunakan <b>Gemini API Key</b> Anda.
+          </p>
+          <div className="space-y-6">
+            <button
+              onClick={handleActivateKey}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-6 rounded-2xl transition-all shadow-xl active:scale-95 uppercase tracking-widest text-sm shadow-blue-500/20 flex items-center justify-center gap-3"
+            >
+              <i className="fa-solid fa-key"></i> AKTIFKAN SEKARANG
+            </button>
+            <div className="pt-6 border-t border-white/5">
+              <a 
+                href="https://ai.google.dev/gemini-api/docs/billing" 
+                target="_blank" 
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 text-[10px] text-zinc-500 hover:text-blue-400 transition-colors font-bold uppercase tracking-widest"
+              >
+                CARA MENDAPATKAN API KEY <i className="fa-solid fa-external-link"></i>
+              </a>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
+  // 3. Navigation Unlocking Logic
+  const steps = [
+    { id: AppStep.UPLOAD, label: 'Upload Assets', icon: 'fa-cloud-arrow-up', isUnlocked: true },
+    { id: AppStep.REFINE, label: 'Refine & Text', icon: 'fa-wand-magic-sparkles', isUnlocked: !!state.combinedImage },
+    { id: AppStep.STORYBOARD, label: 'Storyboard', icon: 'fa-border-all', isUnlocked: !!state.storyboardGrid },
+    { id: AppStep.RESULTS, label: 'Final Output', icon: 'fa-film', isUnlocked: state.scenes.some(s => s.image !== null) },
+  ];
+
   return (
     <div className="min-h-screen flex bg-[#0a0a0b] text-zinc-100 relative overflow-hidden">
-      {/* Sidebar */}
       <aside className={`
         fixed inset-y-0 left-0 z-50 w-72 sm:w-80 bg-[#0f0f11]/95 backdrop-blur-2xl border-r border-white/5 transition-transform duration-300 lg:translate-x-0 lg:static flex-shrink-0
         ${isSidebarOpen ? 'translate-x-0 shadow-2xl shadow-black' : '-translate-x-full'}
       `}>
-        <div className="p-6 sm:p-8 h-full flex flex-col overflow-y-auto">
-          <div className="flex items-center gap-4 mb-10 sm:mb-14">
-            <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg shadow-violet-500/20">
-              <i className="fa-solid fa-bolt text-white text-xl sm:text-2xl"></i>
+        <div className="p-8 h-full flex flex-col overflow-y-auto">
+          <div className="flex items-center gap-4 mb-16">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <i className="fa-solid fa-bolt text-white text-xl"></i>
             </div>
-            <span className="text-2xl sm:text-3xl font-black tracking-tighter uppercase">VEO <span className="text-violet-500">PRO</span></span>
+            <span className="text-xl font-black tracking-tighter uppercase leading-tight">Multishot <br/><span className="text-blue-500">Affiliate AI</span></span>
           </div>
 
-          <nav className="space-y-3 sm:space-y-4 flex-1">
+          <nav className="space-y-4 flex-1">
             {steps.map((s) => {
               const isActive = step === s.id;
               const isPast = steps.findIndex(x => x.id === step) > steps.findIndex(x => x.id === s.id);
+              const canClick = s.isUnlocked;
+
               return (
                 <button
                   key={s.id}
+                  disabled={!canClick}
                   onClick={() => {
-                    setStep(s.id);
-                    setIsSidebarOpen(false);
+                    if (canClick) {
+                      setStep(s.id);
+                      setIsSidebarOpen(false);
+                    }
                   }}
                   className={`
-                    w-full flex items-center gap-4 sm:gap-6 px-4 sm:px-6 py-4 sm:py-6 rounded-2xl sm:rounded-3xl transition-all group border text-left
-                    ${isActive ? 'bg-violet-600/15 text-violet-400 border-violet-500/30 shadow-[0_0_20px_rgba(139,92,246,0.1)]' : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/5 border-transparent'}
+                    w-full flex items-center gap-5 px-6 py-5 rounded-2xl transition-all group border text-left relative
+                    ${isActive ? 'bg-blue-600/15 text-blue-400 border-blue-500/30' : 'text-zinc-500 hover:text-zinc-200 border-transparent'}
+                    ${!canClick ? 'opacity-30 grayscale cursor-not-allowed bg-black/10' : 'hover:bg-white/5 cursor-pointer'}
                   `}
                 >
                   <div className={`
-                    w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all flex-shrink-0
-                    ${isActive ? 'bg-violet-600 text-white shadow-xl shadow-violet-600/30 scale-105 sm:scale-110' : 'bg-zinc-800 group-hover:bg-zinc-700'}
+                    w-11 h-11 rounded-xl flex items-center justify-center transition-all flex-shrink-0
+                    ${isActive ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/30' : 'bg-zinc-800 group-hover:bg-zinc-700'}
                   `}>
-                    <i className={`fa-solid ${s.icon} text-lg sm:text-xl`}></i>
+                    <i className={`fa-solid ${canClick ? s.icon : 'fa-lock'} text-base`}></i>
                   </div>
-                  <span className="font-bold text-lg leading-none">{s.label}</span>
-                  {isPast && <i className="fa-solid fa-check ml-auto text-emerald-500 text-lg"></i>}
+                  <div className="flex flex-col">
+                    <span className="font-bold text-sm leading-none">{s.label}</span>
+                    {!canClick && <span className="text-[9px] uppercase tracking-widest mt-1 text-zinc-600 font-black italic">Locked</span>}
+                  </div>
+                  {isPast && canClick && <i className="fa-solid fa-circle-check ml-auto text-emerald-500 text-sm"></i>}
                 </button>
               );
             })}
           </nav>
+          
+          <div className="pt-8 mt-auto border-t border-white/5">
+             <div className="flex items-center gap-3 px-2">
+                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">API ACTIVE</span>
+             </div>
+          </div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 relative overflow-y-auto p-4 sm:p-8 lg:p-14 scroll-smooth min-w-0 bg-[#0a0a0b] h-screen">
+      <main className="flex-1 relative overflow-y-auto p-6 sm:p-14 scroll-smooth min-w-0 bg-[#0a0a0b] h-screen">
         <button 
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="lg:hidden fixed bottom-6 right-6 z-[60] w-14 h-14 bg-violet-600 shadow-2xl rounded-full flex items-center justify-center border border-white/20 active:scale-90"
+          className="lg:hidden fixed bottom-6 right-6 z-[60] w-14 h-14 bg-blue-600 shadow-2xl rounded-full flex items-center justify-center border border-white/20 active:scale-90"
         >
-          <i className={`fa-solid ${isSidebarOpen ? 'fa-xmark' : 'fa-bars'} text-2xl`}></i>
+          <i className={`fa-solid ${isSidebarOpen ? 'fa-xmark' : 'fa-bars'} text-xl text-white`}></i>
         </button>
 
         {loadingMsg && (
           <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/95 backdrop-blur-2xl px-6 text-center">
-            <div className="relative w-32 h-32 mb-12">
-              <div className="absolute inset-0 border-4 border-violet-500/10 rounded-full"></div>
-              <div 
-                className="absolute inset-0 border-4 border-violet-500 border-t-transparent rounded-full animate-spin"
-                style={{ animationDuration: '0.8s' }}
-              ></div>
-              <div className="absolute inset-0 flex items-center justify-center font-black text-2xl text-violet-400">
+            <div className="relative w-28 h-28 mb-12">
+              <div className="absolute inset-0 border-4 border-blue-500/10 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center font-black text-2xl text-blue-400">
                 {Math.floor(loadingProgress)}%
               </div>
             </div>
-            <p className="text-2xl sm:text-4xl font-black gradient-text animate-pulse mb-6 tracking-tight uppercase leading-tight">{loadingMsg}</p>
-            <div className="w-full max-w-md h-2 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
-              <div 
-                className="h-full bg-gradient-to-r from-violet-600 to-fuchsia-500 transition-all duration-300 shadow-[0_0_15px_rgba(139,92,246,0.5)]"
-                style={{ width: `${loadingProgress}%` }}
-              ></div>
+            <p className="text-3xl font-black gradient-text animate-pulse mb-6 tracking-tight uppercase leading-none">{loadingMsg}</p>
+            <div className="w-full max-w-md h-2 bg-zinc-900 rounded-full overflow-hidden border border-white/5 shadow-inner">
+              <div className="h-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-300" style={{ width: `${loadingProgress}%` }}></div>
             </div>
           </div>
         )}
 
         {previewImage && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/98 backdrop-blur-3xl p-4 sm:p-8" onClick={() => setPreviewImage(null)}>
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/98 backdrop-blur-3xl p-8" onClick={() => setPreviewImage(null)}>
             <div className="relative w-full h-full flex items-center justify-center" onClick={e => e.stopPropagation()}>
               <img src={previewImage} className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" alt="Preview" />
-              <button 
-                onClick={() => setPreviewImage(null)}
-                className="absolute top-4 right-4 bg-zinc-900/50 hover:bg-zinc-900 w-12 h-12 rounded-full text-white text-3xl flex items-center justify-center transition-all"
-              >
-                &times;
-              </button>
+              <button onClick={() => setPreviewImage(null)} className="absolute top-4 right-4 bg-zinc-900/50 hover:bg-zinc-900 w-12 h-12 rounded-full text-white text-3xl flex items-center justify-center transition-all">&times;</button>
             </div>
           </div>
         )}
 
-        <div className="max-w-[1500px] mx-auto pb-32">
+        <div className="max-w-[1400px] mx-auto pb-32">
           {error && (
-            <div className="mb-8 p-6 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-6 animate-up">
-              <i className="fa-solid fa-triangle-exclamation text-3xl"></i>
-              <span className="font-bold text-lg flex-1 leading-relaxed">{error}</span>
-              <button onClick={() => setError(null)} className="text-4xl opacity-50 hover:opacity-100">&times;</button>
+            <div className="mb-8 p-6 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-4 animate-up">
+              <i className="fa-solid fa-triangle-exclamation text-2xl"></i>
+              <span className="font-bold text-sm flex-1 leading-relaxed">{error}</span>
+              <button onClick={() => setError(null)} className="text-3xl opacity-50 hover:opacity-100">&times;</button>
             </div>
           )}
 
           {step === AppStep.UPLOAD && (
-            <div className="grid lg:grid-cols-2 gap-8 animate-up">
-              <div className="glass p-10 rounded-[3rem] border border-white/5 flex flex-col items-center text-center shadow-2xl">
-                <div className="w-20 h-20 bg-zinc-800 rounded-[1.5rem] flex items-center justify-center mb-8 border border-white/5">
-                  <i className="fa-solid fa-user-tie text-4xl text-violet-400"></i>
+            <div className="grid lg:grid-cols-2 gap-10 animate-up">
+              <div className="glass p-10 rounded-[2.5rem] border border-white/5 flex flex-col items-center text-center shadow-2xl">
+                <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center mb-8 border border-white/5">
+                  <i className="fa-solid fa-user-tie text-3xl text-blue-400"></i>
                 </div>
                 <h3 className="text-2xl font-black mb-2 uppercase tracking-tight">Subject Model</h3>
-                <p className="text-zinc-500 text-sm mb-10 font-medium">Upload your clean model reference.</p>
+                <p className="text-zinc-500 text-sm mb-10 font-medium italic">Wajib: Foto model pose tegak.</p>
                 <div className="w-full relative group">
                   <label className={`
-                    w-full h-[400px] border-2 border-dashed rounded-[2.5rem] flex flex-col items-center justify-center transition-all overflow-hidden relative
-                    ${state.modelImage ? 'border-transparent bg-black/40' : 'border-zinc-800 hover:border-violet-500/50 hover:bg-violet-500/5 cursor-pointer'}
+                    w-full h-[450px] border-2 border-dashed rounded-[2rem] flex flex-col items-center justify-center transition-all overflow-hidden relative
+                    ${state.modelImage ? 'border-transparent bg-black/40' : 'border-zinc-800 hover:border-blue-500/50 hover:bg-blue-500/5 cursor-pointer'}
                   `}>
                     {state.modelImage ? (
                       <img src={state.modelImage} className="absolute inset-0 w-full h-full object-contain p-4" alt="Model" />
                     ) : (
                       <div className="flex flex-col items-center">
-                        <i className="fa-solid fa-plus text-5xl text-zinc-700 mb-6 group-hover:text-violet-400 transition-colors"></i>
-                        <span className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-xs">Attach Reference</span>
+                        <i className="fa-solid fa-plus text-5xl text-zinc-700 mb-6 group-hover:text-blue-400 transition-colors"></i>
+                        <span className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-xs">Pilih Foto Model</span>
                       </div>
                     )}
                     {!state.modelImage && <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'model')} />}
                   </label>
                   {state.modelImage && (
-                    <button onClick={() => removeImage('model')} className="absolute -top-4 -right-4 w-12 h-12 bg-zinc-900 border border-white/10 rounded-full flex items-center justify-center text-zinc-500 hover:text-red-400 shadow-2xl active:scale-90 z-10">
-                      <i className="fa-solid fa-xmark text-xl"></i>
+                    <button onClick={() => removeImage('model')} className="absolute -top-3 -right-3 w-10 h-10 bg-zinc-900 border border-white/10 rounded-full flex items-center justify-center text-zinc-500 hover:text-red-400 shadow-2xl active:scale-90 z-10">
+                      <i className="fa-solid fa-xmark"></i>
                     </button>
                   )}
                 </div>
               </div>
 
-              <div className="glass p-10 rounded-[3rem] border border-white/5 flex flex-col items-center text-center shadow-2xl">
-                <div className="w-20 h-20 bg-zinc-800 rounded-[1.5rem] flex items-center justify-center mb-8 border border-white/5">
-                  <i className="fa-solid fa-shirt text-4xl text-emerald-400"></i>
+              <div className="glass p-10 rounded-[2.5rem] border border-white/5 flex flex-col items-center text-center shadow-2xl">
+                <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center mb-8 border border-white/5">
+                  <i className="fa-solid fa-shirt text-3xl text-emerald-400"></i>
                 </div>
                 <h3 className="text-2xl font-black mb-2 uppercase tracking-tight">Product Asset</h3>
-                <p className="text-zinc-500 text-sm mb-10 font-medium">Upload high-res Mukena asset.</p>
+                <p className="text-zinc-500 text-sm mb-10 font-medium italic">Wajib: Detail produk resolusi tinggi.</p>
                 <div className="w-full relative group">
                   <label className={`
-                    w-full h-[400px] border-2 border-dashed rounded-[2.5rem] flex flex-col items-center justify-center transition-all overflow-hidden relative
+                    w-full h-[450px] border-2 border-dashed rounded-[2rem] flex flex-col items-center justify-center transition-all overflow-hidden relative
                     ${state.productImage ? 'border-transparent bg-black/40' : 'border-zinc-800 hover:border-emerald-500/50 hover:bg-emerald-500/5 cursor-pointer'}
                   `}>
                     {state.productImage ? (
@@ -406,14 +434,14 @@ const App: React.FC = () => {
                     ) : (
                       <div className="flex flex-col items-center">
                         <i className="fa-solid fa-plus text-5xl text-zinc-700 mb-6 group-hover:text-emerald-400 transition-colors"></i>
-                        <span className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-xs">Attach Product</span>
+                        <span className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-xs">Pilih Foto Produk</span>
                       </div>
                     )}
                     {!state.productImage && <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'product')} />}
                   </label>
                   {state.productImage && (
-                    <button onClick={() => removeImage('product')} className="absolute -top-4 -right-4 w-12 h-12 bg-zinc-900 border border-white/10 rounded-full flex items-center justify-center text-zinc-500 hover:text-red-400 shadow-2xl active:scale-90 z-10">
-                      <i className="fa-solid fa-xmark text-xl"></i>
+                    <button onClick={() => removeImage('product')} className="absolute -top-3 -right-3 w-10 h-10 bg-zinc-900 border border-white/10 rounded-full flex items-center justify-center text-zinc-500 hover:text-red-400 shadow-2xl active:scale-90 z-10">
+                      <i className="fa-solid fa-xmark"></i>
                     </button>
                   )}
                 </div>
@@ -423,91 +451,60 @@ const App: React.FC = () => {
                 <button 
                   onClick={startProcessing}
                   disabled={!state.modelImage || !state.productImage}
-                  className="w-full sm:w-auto bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-800 disabled:text-zinc-600 px-20 py-8 rounded-[3rem] font-black text-xl transition-all shadow-xl active:scale-95 uppercase tracking-[0.3em] leading-none"
+                  className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 px-24 py-8 rounded-[2rem] font-black text-xl transition-all shadow-xl active:scale-95 uppercase tracking-[0.4em]"
                 >
-                  Merge Production Suite
+                  MULAI PROSES AI
                 </button>
               </div>
             </div>
           )}
 
           {step === AppStep.REFINE && state.combinedImage && (
-            <div className="grid lg:grid-cols-2 gap-12 animate-up">
-              <div className="glass p-6 rounded-[3rem] border border-white/5 shadow-2xl sticky top-10 self-start">
-                 <img src={state.combinedImage} className="w-full rounded-[2rem] object-contain aspect-[9/16]" alt="Refined" />
+            <div className="grid lg:grid-cols-2 gap-14 animate-up">
+              <div className="glass p-5 rounded-[2.5rem] border border-white/5 shadow-2xl sticky top-14 self-start">
+                 <img src={state.combinedImage} className="w-full rounded-2xl object-contain aspect-[9/16]" alt="Refined Master" />
               </div>
 
-              <div className="space-y-10">
-                <h2 className="text-4xl font-black gradient-text uppercase tracking-tighter leading-none">Master Styling</h2>
-                <p className="text-zinc-400 text-base font-medium leading-relaxed">
-                  Refine the final look by describing the production environment, lighting, and branding details.
-                </p>
-                
+              <div className="space-y-12">
+                <h2 className="text-4xl font-black gradient-text uppercase tracking-tighter leading-none">Styling Ruangan</h2>
                 <div className="space-y-8">
-                  <div className="glass p-8 rounded-[2.5rem] border border-white/5">
-                    <label className="block text-xs font-black text-violet-400 uppercase tracking-widest mb-4">Production Environment</label>
+                  <div className="glass p-8 rounded-[2rem] border border-white/5">
+                    <label className="block text-xs font-black text-blue-400 uppercase tracking-widest mb-4">Latar Belakang & Suasana</label>
                     <textarea 
                       value={options.background}
                       onChange={(e) => setOptions(o => ({...o, background: e.target.value}))}
-                      className="w-full bg-black/60 border border-white/10 rounded-2xl p-6 focus:ring-2 focus:ring-violet-500 outline-none text-zinc-100 h-32 resize-none text-sm font-medium leading-relaxed"
-                      placeholder="e.g., Luxury minimalist modern prayer room..."
+                      className="w-full bg-black/60 border border-white/10 rounded-xl p-6 focus:ring-2 focus:ring-blue-500 outline-none text-zinc-100 h-40 resize-none text-sm font-medium leading-relaxed"
+                      placeholder="Contoh: Kamar tidur mewah minimalis, sinar matahari lembut..."
                     />
-                    <div className="mt-4 grid grid-cols-2 gap-4">
+                    <div className="mt-6 grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Style Reference</label>
-                        <input 
-                          type="text"
-                          value={options.backgroundRef}
-                          onChange={(e) => setOptions(o => ({...o, backgroundRef: e.target.value}))}
-                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-medium"
-                          placeholder="e.g., Zen Modern"
-                        />
+                        <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Ref Style</label>
+                        <input type="text" value={options.backgroundRef} onChange={(e) => setOptions(o => ({...o, backgroundRef: e.target.value}))} className="w-full bg-black/60 border border-white/10 rounded-xl px-5 py-3 text-xs" />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Lighting Style</label>
-                        <input 
-                          type="text"
-                          value={options.lightingRef}
-                          onChange={(e) => setOptions(o => ({...o, lightingRef: e.target.value}))}
-                          className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-3 text-sm font-medium"
-                          placeholder="e.g., Golden Hour"
-                        />
+                        <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Lighting</label>
+                        <input type="text" value={options.lightingRef} onChange={(e) => setOptions(o => ({...o, lightingRef: e.target.value}))} className="w-full bg-black/60 border border-white/10 rounded-xl px-5 py-3 text-xs" />
                       </div>
                     </div>
                   </div>
                   
-                  <div className="glass p-8 rounded-[2.5rem] border border-white/5">
-                    <label className="block text-xs font-black text-violet-400 uppercase tracking-widest mb-4">Neon Branding (Behind Subject)</label>
+                  <div className="glass p-8 rounded-[2rem] border border-white/5">
+                    <label className="block text-xs font-black text-blue-400 uppercase tracking-widest mb-4">Neon Branding (Text)</label>
                     <input 
                       type="text"
                       value={options.neonText}
                       onChange={(e) => setOptions(o => ({...o, neonText: e.target.value}))}
-                      className="w-full bg-black/60 border border-white/10 rounded-2xl px-6 py-4 focus:ring-2 focus:ring-violet-500 outline-none text-xl font-black"
-                      placeholder="Input branding text..."
+                      className="w-full bg-black/60 border border-white/10 rounded-xl px-6 py-5 focus:ring-2 focus:ring-blue-500 outline-none text-xl font-black uppercase"
                     />
-                    <div className="mt-6">
-                      <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3">Font Aesthetic</label>
-                      <select 
-                        value={options.fontStyle}
-                        onChange={(e) => setOptions(o => ({...o, fontStyle: e.target.value}))}
-                        className="w-full bg-black/60 border border-white/10 rounded-xl px-4 py-4 text-sm font-bold text-violet-400 outline-none cursor-pointer hover:bg-black/80 transition-colors"
-                      >
-                        <option value="Elegant Script">Elegant Script (Handwritten)</option>
-                        <option value="Modern Sans Serif">Modern Sans Serif (Clean)</option>
-                        <option value="Bold Futuristic">Bold Futuristic (Sci-Fi)</option>
-                        <option value="Minimalist Serif">Minimalist Serif (Luxury)</option>
-                        <option value="Neon Tube Signature">Neon Tube Signature (Authentic)</option>
-                      </select>
-                    </div>
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-4">
-                  <button onClick={handleRefine} className="bg-zinc-900 hover:bg-zinc-800 py-6 rounded-2xl font-bold text-xs uppercase tracking-[0.2em] transition-all border border-white/5 active:scale-95 shadow-xl">
-                    Re-Style Image
+                <div className="flex flex-col gap-5 pt-4">
+                  <button onClick={handleRefine} className="bg-zinc-900 hover:bg-zinc-800 py-6 rounded-2xl font-bold text-xs uppercase tracking-[0.3em] transition-all border border-white/5 active:scale-95">
+                    UPDATE PREVIEW
                   </button>
-                  <button onClick={goToStoryboard} className="bg-violet-600 hover:bg-violet-500 py-8 rounded-[2.5rem] font-black text-lg uppercase tracking-[0.3em] transition-all shadow-xl active:scale-95 leading-none">
-                    Generate Sequence Storyboard
+                  <button onClick={goToStoryboard} className="bg-blue-600 hover:bg-blue-500 py-8 rounded-[2.5rem] font-black text-lg uppercase tracking-[0.4em] transition-all shadow-xl active:scale-95">
+                    LANJUT KE STORYBOARD
                   </button>
                 </div>
               </div>
@@ -515,71 +512,64 @@ const App: React.FC = () => {
           )}
 
           {step === AppStep.STORYBOARD && state.storyboardGrid && (
-            <div className="max-w-6xl mx-auto flex flex-col items-center animate-up">
-              <h2 className="text-4xl sm:text-6xl font-black mb-10 tracking-tighter text-center uppercase leading-none">Sequence Blueprint</h2>
-              <div className="w-full glass p-8 rounded-[4rem] border border-white/10 shadow-2xl mb-12">
-                <img src={state.storyboardGrid} className="w-full rounded-[3rem] aspect-[9/16] object-contain shadow-2xl" alt="Storyboard Grid" />
+            <div className="max-w-4xl mx-auto flex flex-col items-center animate-up">
+              <h2 className="text-4xl font-black mb-12 tracking-tighter text-center uppercase">Sequence Grid 3x3</h2>
+              <div className="w-full glass p-6 rounded-[2.5rem] border border-white/10 shadow-2xl mb-14">
+                <img src={state.storyboardGrid} className="w-full rounded-2xl aspect-[9/16] object-contain shadow-2xl" alt="Storyboard Grid" />
               </div>
               <button 
                 onClick={startExtraction} 
-                className="w-full sm:w-auto bg-violet-600 hover:bg-violet-500 px-24 py-10 rounded-[3rem] font-black text-2xl uppercase tracking-[0.2em] shadow-2xl active:scale-95 leading-none"
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 px-24 py-10 rounded-[3rem] font-black text-2xl uppercase tracking-[0.3em] shadow-2xl active:scale-95 leading-none"
               >
-                Extract Production Layers
+                EKSTRAK POSISI 1-9
               </button>
             </div>
           )}
 
           {step === AppStep.RESULTS && (
-            <div className="grid lg:grid-cols-12 gap-10 items-start animate-up">
-              {/* Sidebar Preview */}
-              <div className="lg:col-span-3 space-y-8 sticky top-10 self-start">
-                <h3 className="text-sm font-black text-violet-400 px-4 uppercase tracking-[0.2em]">Master Look</h3>
-                <div className="glass p-4 rounded-[3rem] border border-white/10 shadow-2xl cursor-pointer group relative" onClick={() => setPreviewImage(state.storyboardGrid)}>
-                  <div className="absolute inset-0 bg-violet-600/20 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center z-10 backdrop-blur-sm rounded-[3rem]">
-                    <i className="fa-solid fa-expand text-4xl"></i>
+            <div className="grid lg:grid-cols-12 gap-12 items-start animate-up">
+              <div className="lg:col-span-3 space-y-10 sticky top-14 self-start">
+                <h3 className="text-[10px] font-black text-blue-400 px-4 uppercase tracking-[0.3em]">Master Template</h3>
+                <div className="glass p-4 rounded-[2.5rem] border border-white/10 shadow-2xl cursor-pointer group relative" onClick={() => setPreviewImage(state.storyboardGrid)}>
+                  <div className="absolute inset-0 bg-blue-600/30 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center z-10 backdrop-blur-sm rounded-[2.5rem]">
+                    <i className="fa-solid fa-expand text-3xl text-white"></i>
                   </div>
-                  <img src={state.storyboardGrid!} className="w-full rounded-[2.5rem] aspect-[9/16] object-contain" alt="Master Reference" />
+                  <img src={state.storyboardGrid!} className="w-full rounded-2xl aspect-[9/16] object-contain" alt="Master Reference" />
                 </div>
               </div>
 
-              {/* Grid of Results */}
               <div className="lg:col-span-9 space-y-12">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 px-4">
+                <div className="flex flex-col sm:flex-row justify-between items-end gap-6 px-6">
                   <div>
-                    <h2 className="text-4xl font-black tracking-tighter mb-2 leading-none">Extracted Scenes</h2>
-                    <p className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-xs">Campaign Assets Ready</p>
+                    <h2 className="text-4xl font-black tracking-tighter mb-2">Assets Selesai</h2>
+                    <p className="text-zinc-500 font-black uppercase tracking-[0.3em] text-[10px]">Tinggal Download / Animasikan</p>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] font-black text-violet-400 tracking-widest uppercase mb-2 block">Extraction Progress</span>
-                    <div className="w-64 h-2 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
-                      <div className="h-full bg-violet-600 transition-all duration-500" style={{ width: `${state.extractionProgress}%` }}></div>
+                    <span className="text-[10px] font-black text-blue-400 tracking-widest uppercase mb-3 block">Extracting Progress</span>
+                    <div className="w-64 h-2.5 bg-zinc-900 rounded-full overflow-hidden border border-white/5 shadow-inner">
+                      <div className="h-full bg-gradient-to-r from-blue-600 to-indigo-500 transition-all duration-700 shadow-[0_0_15px_rgba(59,130,246,0.5)]" style={{ width: `${state.extractionProgress}%` }}></div>
                     </div>
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10 pb-32">
                   {state.scenes.map((scene, idx) => (
-                    <div key={scene.id} className="glass p-8 rounded-[3.5rem] border border-white/5 flex flex-col h-full hover:border-violet-500/30 transition-all">
-                      <div className="aspect-[9/16] bg-black/60 rounded-[2.5rem] overflow-hidden relative mb-8 shadow-inner border border-white/10 cursor-pointer" onClick={() => scene.image && setPreviewImage(scene.image)}>
+                    <div key={scene.id} className="glass p-7 rounded-[3rem] border border-white/5 flex flex-col h-full hover:border-blue-500/30 transition-all group/card">
+                      <div className="aspect-[9/16] bg-black/60 rounded-[2rem] overflow-hidden relative mb-10 shadow-inner border border-white/10 cursor-pointer" onClick={() => scene.image && setPreviewImage(scene.image)}>
                         {scene.image ? (
                           <>
                             {scene.videoUrl ? (
-                              <video src={scene.videoUrl} className="w-full h-full object-contain" autoPlay loop muted playsInline />
+                              <video src={scene.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline />
                             ) : (
-                              <img src={scene.image} className="w-full h-full object-contain p-2" alt={`Frame ${idx+1}`} />
+                              <img src={scene.image} className="w-full h-full object-cover" alt={`Frame ${idx+1}`} />
                             )}
-                            <div className="absolute top-6 right-6 z-20 flex flex-col gap-3">
-                              <a href={scene.videoUrl || scene.image} download className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-xl hover:bg-violet-500 hover:text-white transition-all">
-                                <i className="fa-solid fa-download"></i>
+                            <div className="absolute top-5 right-5 z-20 flex flex-col gap-4 opacity-0 group-hover/card:opacity-100 transition-all transform translate-y-2 group-hover/card:translate-y-0">
+                              <a href={scene.videoUrl || scene.image} download className="w-11 h-11 bg-white text-black rounded-2xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all scale-90 hover:scale-100">
+                                <i className="fa-solid fa-download text-lg"></i>
                               </a>
                               {!scene.videoUrl && (
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); handleUpscale(scene.id); }}
-                                  disabled={scene.isUpscaling}
-                                  className="w-12 h-12 bg-zinc-900 text-violet-400 rounded-full flex items-center justify-center shadow-xl hover:bg-violet-600 hover:text-white transition-all border border-violet-500/20"
-                                  title="Upscale to 2K"
-                                >
-                                  {scene.isUpscaling ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-wand-sparkles"></i>}
+                                <button onClick={(e) => { e.stopPropagation(); handleUpscale(scene.id); }} disabled={scene.isUpscaling} className="w-11 h-11 bg-zinc-900 text-blue-400 rounded-2xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all border border-blue-500/20">
+                                  {scene.isUpscaling ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>}
                                 </button>
                               )}
                             </div>
@@ -588,40 +578,40 @@ const App: React.FC = () => {
                           <div className="w-full h-full flex items-center justify-center">
                             {scene.isExtracting ? (
                               <div className="flex flex-col items-center">
-                                <div className="w-10 h-10 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                                <span className="text-[10px] font-black uppercase text-zinc-600">Extracting...</span>
+                                <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                                <span className="text-[10px] font-black uppercase text-zinc-600 tracking-widest animate-pulse">Parsing Scene...</span>
                               </div>
-                            ) : <i className="fa-solid fa-image text-4xl text-zinc-900"></i>}
+                            ) : <i className="fa-solid fa-lock text-3xl text-zinc-900 opacity-20"></i>}
                           </div>
                         )}
                       </div>
 
-                      <div className="mt-auto">
-                        <div className="flex items-center justify-between mb-6">
-                          <div>
-                            <p className="text-[10px] font-black text-violet-500 uppercase tracking-[0.2em]">Asset Sequence 0{idx+1}</p>
-                            <p className="text-base font-black tracking-tight">Status: {scene.image ? 'Processed' : 'Pending'}</p>
-                          </div>
+                      <div className="mt-auto px-2 pb-2">
+                        <div className="mb-8">
+                          <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] mb-2 flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span> SCENE 0{idx+1}
+                          </p>
+                          <p className="text-lg font-black tracking-tight">{scene.image ? 'Ready for Export' : 'In Production Queue'}</p>
                         </div>
 
                         {scene.image && !scene.videoUrl && (
-                          <div className="space-y-4">
+                          <div className="space-y-5 animate-up">
                             <textarea
-                              placeholder="Describe unique motion..."
+                              placeholder="Ketik instruksi gerakan..."
                               value={scenePrompts[idx]}
                               onChange={(e) => {
                                 const newPrompts = [...scenePrompts];
                                 newPrompts[idx] = e.target.value;
                                 setScenePrompts(newPrompts);
                               }}
-                              className="w-full bg-black/40 border border-white/5 rounded-xl p-3 text-xs focus:ring-1 focus:ring-violet-500 outline-none h-20 resize-none font-medium text-zinc-300"
+                              className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-xs focus:ring-1 focus:ring-blue-500 outline-none h-20 resize-none font-medium text-zinc-400 shadow-inner"
                             />
                             <button 
                               onClick={() => handleGenerateVideo(scene.id)}
                               disabled={scene.isGeneratingVideo}
-                              className="w-full py-4 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] bg-white/5 border border-white/10 hover:bg-violet-600 hover:border-violet-600 transition-all flex items-center justify-center gap-3 leading-none"
+                              className="w-full py-5 rounded-[1.5rem] font-bold text-[11px] uppercase tracking-[0.3em] bg-white/5 border border-white/10 hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-4 text-zinc-400 shadow-lg"
                             >
-                              {scene.isGeneratingVideo ? <><i className="fa-solid fa-spinner fa-spin"></i> Veo Simulating...</> : <><i className="fa-solid fa-film"></i> Simulate Veo Motion</>}
+                              {scene.isGeneratingVideo ? <><i className="fa-solid fa-spinner fa-spin"></i> Processing Video...</> : <><i className="fa-solid fa-clapperboard"></i> Buat Animasi Video</>}
                             </button>
                           </div>
                         )}
