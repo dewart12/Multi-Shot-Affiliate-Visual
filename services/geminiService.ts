@@ -9,12 +9,11 @@ import { GoogleGenAI } from "@google/genai";
  * GEMINI_API_KEY=AIzaSy... (Masukan Key Anda)
  */
 const getApiKey = () => {
-  // Prioritas ke GEMINI_API_KEY sesuai standar deployment AI Studio
-  return process.env.GEMINI_API_KEY || process.env.API_KEY || "AIzaSyAhsMqPWuM7RSBRc-HK1z_3FxglWkH0piM";
+  return process.env.GEMINI_API_KEY || process.env.API_KEY || "";
 };
 
-// Menggunakan Gemini 3 Pro sesuai request untuk stabilitas lebih baik
-const PRO_MODEL = 'gemini-3-pro-preview';
+// Menggunakan model IMAGE PRO agar mendukung Aspect Ratio dan Image Size
+const PRO_IMAGE_MODEL = 'gemini-3-pro-image-preview';
 const VEO_MODEL = 'veo-3.1-fast-generate-preview';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -51,39 +50,45 @@ async function callWithRetry<T>(fn: (ai: any) => Promise<T>, onRetry?: (msg: str
 export const generateCombinedImage = async (modelBase64: string, productBase64: string, onStatus?: (s: string) => void): Promise<string> => {
   return callWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
-      model: PRO_MODEL,
+      model: PRO_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } },
           { inlineData: { data: productBase64.split(',')[1], mimeType: 'image/png' } },
-          { text: `TASK: ABSOLUTE PIXEL-PERFECT CLOTHING SWAP. Use model face/pose, swap clothes with product image. 100% fidelity. 1K resolution. Aspect 9:16.` }
+          { text: `TASK: PHOTOREALISTIC CLOTHING SWAP.
+          1. KEEP the exact face, hair, and body pose from the MODEL image.
+          2. REPLACE the model's outfit with the EXACT clothes from the PRODUCT image.
+          3. Maintain lighting, texture, and 100% fidelity to the original person.
+          Output: 1K resolution, Portrait 9:16.` }
         ]
       },
       config: { 
-        imageConfig: { aspectRatio: "9:16", imageSize: "1K" },
-        seed: 42 // Mengunci hasil agar lebih konsisten
+        imageConfig: { aspectRatio: "9:16", imageSize: "1K" }
       }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal menyatukan aset.");
+    throw new Error("Gagal menyatukan aset. Cek API Key Anda.");
   }, onStatus);
 };
 
 export const refineAndCustomize = async (image: string, background: string, backgroundRef: string, lightingRef: string, neonText: string, fontStyle: string, onStatus?: (s: string) => void): Promise<string> => {
   return callWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
-      model: PRO_MODEL,
+      model: PRO_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: image.split(',')[1], mimeType: 'image/png' } },
-          { text: `Change ONLY background to ${background}. Lighting: ${lightingRef}. Add branding neon sign: "${neonText}". Aspect 9:16. 1K resolution.` }
+          { text: `REPRODUCTION TASK: Keep the person exactly the same.
+          1. Replace ONLY the background with: ${background}.
+          2. Apply ${lightingRef} lighting effects.
+          3. Add a high-end glowing neon sign saying "${neonText}" in ${fontStyle} style on the wall.
+          Maintain character consistency.` }
         ]
       },
       config: { 
-        imageConfig: { aspectRatio: "9:16", imageSize: "1K" },
-        seed: 42
+        imageConfig: { aspectRatio: "9:16", imageSize: "1K" }
       }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -96,16 +101,20 @@ export const refineAndCustomize = async (image: string, background: string, back
 export const generateStoryboardGrid = async (baseImage: string, neonText: string, onStatus?: (s: string) => void): Promise<string> => {
   return callWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
-      model: PRO_MODEL,
+      model: PRO_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `PREMIUM FASHION STORYBOARD (3x3 SEAMLESS GRID): 9 DIFFERENT scenes of SAME character with neon branding "${neonText}". Aspect 9:16. 1K Resolution.` }
+          { text: `FASHION EDITORIAL STORYBOARD (3x3 GRID):
+          Generate 9 different cinematic shots of the SAME CHARACTER.
+          Include: Close-up, wide shot, side profile, and dynamic poses.
+          All frames must show the "${neonText}" branding.
+          Maintain consistent outfit and lighting across all 9 frames.
+          Output: One single 9:16 image containing the grid.` }
         ]
       },
       config: { 
-        imageConfig: { aspectRatio: "9:16", imageSize: "1K" },
-        seed: 42
+        imageConfig: { aspectRatio: "9:16", imageSize: "1K" }
       }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -119,16 +128,16 @@ export const extractCell = async (gridImage: string, index: number, onStatus?: (
   return callWithRetry(async (ai) => {
     const pos = ["top-left", "top-center", "top-right", "middle-left", "center", "middle-right", "bottom-left", "bottom-center", "bottom-right"];
     const response = await ai.models.generateContent({
-      model: PRO_MODEL,
+      model: PRO_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: gridImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `Crop and extract ONLY the ${pos[index]} frame from this montage. Output single 9:16 portrait. 1K quality.` }
+          { text: `CROP AND EXTRACT: Take only the ${pos[index]} frame from this 3x3 grid.
+          Restore it to a full 9:16 portrait. Enhance quality to 1K.` }
         ]
       },
       config: { 
-        imageConfig: { aspectRatio: "9:16", imageSize: "1K" },
-        seed: 42
+        imageConfig: { aspectRatio: "9:16", imageSize: "1K" }
       }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
