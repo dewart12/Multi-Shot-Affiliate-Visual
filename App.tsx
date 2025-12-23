@@ -216,7 +216,6 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 relative bg-[#0a0a0b]">
-        {/* REWORKED LOADING UI */}
         {(loadingMsg || retryMsg) && (
           <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/95 backdrop-blur-3xl px-10">
             <div className="w-full max-w-lg space-y-8 text-center animate-up">
@@ -248,9 +247,6 @@ const App: React.FC = () => {
                 <p className="text-xs font-bold uppercase tracking-wider text-red-400 mb-1">{error}</p>
                 <p className="text-[11px] text-zinc-500 font-medium">Please check your configuration or try again.</p>
               </div>
-              {!hasKey && (
-                <button onClick={handleOpenKeyPicker} className="px-8 py-4 bg-white text-black rounded-xl text-[11px] font-bold uppercase tracking-wider hover:bg-zinc-200 transition-all">Setup Key</button>
-              )}
             </div>
           )}
 
@@ -324,56 +320,96 @@ const App: React.FC = () => {
           )}
 
           {step === AppStep.RESULTS && (
-            <div className="space-y-16 animate-up">
-              <div className="flex justify-between items-end gap-6 px-4">
-                <div className="space-y-2">
-                  <h2 className="text-5xl font-extrabold tracking-tight uppercase leading-none">Output <span className="text-blue-500">Vault</span></h2>
-                  <p className="text-[11px] font-bold text-zinc-600 uppercase tracking-[0.5em]">Final Shot Selection</p>
-                </div>
-                <div className="flex items-center gap-8">
-                  {state.storyboardGrid && (
-                    <div className="hidden lg:block w-24 aspect-[9/16] rounded-xl overflow-hidden border border-white/10 shadow-2xl">
-                      <img src={state.storyboardGrid} className="w-full h-full object-cover opacity-50 hover:opacity-100 transition-opacity cursor-pointer" title="Master Reference" />
-                    </div>
-                  )}
-                  <div className="text-right space-y-3">
-                    <span className="text-[11px] font-bold text-blue-500 uppercase tracking-widest">Extraction Progress</span>
-                    <div className="w-48 h-2 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
-                      <div className="h-full bg-blue-600 transition-all duration-1000 progress-shimmer" style={{ width: `${state.extractionProgress}%` }}></div>
-                    </div>
+            <div className="animate-up flex flex-col lg:flex-row gap-12">
+              {/* MASTER STORYBOARD PREVIEW (SIDEBAR IN RESULTS) */}
+              <div className="lg:w-1/4 space-y-8">
+                <div className="sticky top-10 space-y-6">
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-black text-blue-500 uppercase tracking-[0.3em]">Master Source</h3>
+                    <p className="text-[10px] text-zinc-500 uppercase font-bold">3x3 Storyboard Reference</p>
+                  </div>
+                  <div className="bg-[#0f0f11] p-3 rounded-[2rem] border border-white/10 shadow-2xl">
+                    <img src={state.storyboardGrid || ''} className="w-full rounded-[1.5rem] aspect-[9/16] object-cover opacity-80" />
+                  </div>
+                  <div className="p-6 bg-blue-600/5 border border-blue-500/10 rounded-2xl">
+                    <p className="text-[9px] font-bold text-zinc-400 uppercase leading-relaxed">System is extracting single frames from this grid for separate processing.</p>
                   </div>
                 </div>
               </div>
 
-              {/* Grid layout is strictly max 3 columns */}
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {state.scenes.map((scene, idx) => (
-                  <div key={scene.id} className="bg-[#0f0f11] p-6 rounded-[2.5rem] border border-white/5 flex flex-col group">
-                    <div className="aspect-[9/16] bg-black rounded-3xl overflow-hidden relative mb-6 border border-white/5">
-                      {scene.image ? (
-                        <>
-                          {scene.videoUrl ? <video src={scene.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline /> : <img src={scene.image} className="w-full h-full object-cover" />}
-                          <div className="absolute top-4 right-4 flex flex-col gap-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all">
-                            <a href={scene.videoUrl || scene.image} download className="w-10 h-10 bg-white text-black rounded-xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all"><i className="fa-solid fa-download text-xs"></i></a>
+              {/* FINAL OUTPUTS - STRICT GRID 3 COLS */}
+              <div className="lg:w-3/4 space-y-12">
+                <div className="flex justify-between items-end px-2">
+                  <div className="space-y-2">
+                    <h2 className="text-5xl font-extrabold tracking-tight uppercase leading-none">Output <span className="text-blue-500">Vault</span></h2>
+                    <p className="text-[11px] font-bold text-zinc-600 uppercase tracking-[0.5em]">Phase 04 • Individual Scenics</p>
+                  </div>
+                  <div className="text-right space-y-3">
+                    <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Progress: {state.extractionProgress}%</span>
+                    <div className="w-48 h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
+                      <div className="h-full bg-blue-600 transition-all duration-1000 progress-shimmer" style={{ width: `${state.extractionProgress}%` }}></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {state.scenes.map((scene, idx) => (
+                    <div key={scene.id} className="bg-[#0f0f11] p-5 rounded-[2.5rem] border border-white/5 flex flex-col group shadow-xl">
+                      {/* SINGLE FRAME PREVIEW */}
+                      <div className="aspect-[9/16] bg-black rounded-3xl overflow-hidden relative mb-5 border border-white/5">
+                        {scene.image ? (
+                          <>
+                            {scene.videoUrl ? 
+                              <video src={scene.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline /> : 
+                              <img src={scene.image} className="w-full h-full object-cover animate-up" alt={`Scene ${idx+1}`} />
+                            }
+                            <div className="absolute top-4 right-4 flex flex-col gap-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all">
+                              <a href={scene.videoUrl || scene.image} download className="w-10 h-10 bg-white text-black rounded-xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all">
+                                <i className="fa-solid fa-download text-xs"></i>
+                              </a>
+                            </div>
+                            <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest border border-white/5">
+                              Frame {idx+1}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            {scene.isExtracting ? 
+                              <div className="w-8 h-8 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div> : 
+                              <i className="fa-solid fa-hourglass-start opacity-10 text-3xl"></i>
+                            }
                           </div>
-                          <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest border border-white/5">Scene {idx+1}</div>
-                        </>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          {scene.isExtracting ? <div className="w-8 h-8 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div> : <i className="fa-solid fa-hourglass-start opacity-10 text-3xl"></i>}
+                        )}
+                      </div>
+
+                      {scene.image && !scene.videoUrl && (
+                        <div className="space-y-4">
+                          <textarea 
+                            placeholder="Describe motion..." 
+                            value={scenePrompts[idx]} 
+                            onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} 
+                            className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-[10px] h-20 resize-none outline-none font-medium leading-relaxed focus:border-blue-500/20 text-zinc-400" 
+                          />
+                          <button 
+                            disabled={scene.isGeneratingVideo} 
+                            onClick={() => handleGenerateVideo(scene.id)} 
+                            className="w-full py-4 rounded-xl bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 text-[10px] font-bold uppercase tracking-wider transition-all"
+                          >
+                            {scene.isGeneratingVideo ? 'Rendering Video...' : 'Generate Motion'}
+                          </button>
+                        </div>
+                      )}
+                      
+                      {scene.videoUrl && (
+                        <div className="py-2 text-center">
+                          <span className="text-[9px] font-bold text-green-500 uppercase tracking-widest bg-green-500/10 px-4 py-2 rounded-full border border-green-500/20">
+                            Render Complete
+                          </span>
                         </div>
                       )}
                     </div>
-                    {scene.image && !scene.videoUrl && (
-                      <div className="space-y-4">
-                        <textarea placeholder="Motion Prompt..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-[11px] h-20 resize-none outline-none font-medium leading-relaxed focus:border-blue-500/20" />
-                        <button disabled={scene.isGeneratingVideo} onClick={() => handleGenerateVideo(scene.id)} className="w-full py-4 rounded-xl bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 text-[10px] font-bold uppercase tracking-wider transition-all">
-                          {scene.isGeneratingVideo ? 'Rendering...' : 'Render Motion'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           )}

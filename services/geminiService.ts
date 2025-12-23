@@ -6,7 +6,7 @@ import { GoogleGenAI } from "@google/genai";
  * Anda harus MEMBUAT SENDIRI file tersebut di root folder project Anda.
  */
 const getApiKey = () => {
-  return process.env.GEMINI_API_KEY || process.env.API_KEY || "AIzaSyAhsMqPWuM7RSBRc-HK1z_3FxglWkH0piM";
+  return process.env.GEMINI_API_KEY || process.env.API_KEY || "";
 };
 
 const PRO_IMAGE_MODEL = 'gemini-3-pro-image-preview';
@@ -133,11 +133,12 @@ export const extractCell = async (gridImage: string, index: number, onStatus?: (
       contents: {
         parts: [
           { inlineData: { data: gridImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `EXTRACT AND ENHANCE FRAME:
-          - Crop the ${pos[index]} cell from this grid.
-          - FIX: Remove any grid lines or blur. Enhance details on the face and product.
-          - IDENTITY: Keep the character 100% consistent with the original reference.
-          - 9:16 Portrait, 1K.` }
+          { text: `EXTRACT SINGLE FRAME (CROP TASK):
+          - TARGET: Take ONLY the ${pos[index]} cell from the provided 3x3 grid.
+          - STRICT RULE: Do NOT return the 3x3 grid. Return only ONE SINGLE cropped image.
+          - CONTENT: The output must show the full portrait of the character in that specific cell.
+          - CLEANUP: Remove any grid lines, borders, or artifacts.
+          - OUTPUT: 9:16 Portrait, High Quality 1K.` }
         ]
       },
       config: { 
