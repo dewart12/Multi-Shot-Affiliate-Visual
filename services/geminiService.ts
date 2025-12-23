@@ -1,6 +1,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 
+// Menggunakan model 'gemini-3-pro-image-preview' (Nano Banana Pro) sesuai instruksi untuk kualitas tertinggi
 const PRO_MODEL = 'gemini-3-pro-image-preview';
 const VEO_MODEL = 'veo-3.1-fast-generate-preview';
 
@@ -33,21 +34,31 @@ const getAI = () => {
 export const generateCombinedImage = async (modelBase64: string, productBase64: string): Promise<string> => {
   return callWithRetry(async () => {
     const ai = getAI();
+    // Prompt ini dirancang untuk memaksa model melakukan "Pixel-Perfect Replacement"
     const response = await ai.models.generateContent({
       model: PRO_MODEL,
       contents: {
         parts: [
           { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } },
           { inlineData: { data: productBase64.split(',')[1], mimeType: 'image/png' } },
-          { text: "DIGITAL COMPOSITING: Fit the garment onto the model naturally. Vertical 9:16 portrait format." }
+          { text: `TASK: ABSOLUTE PIXEL-PERFECT CLOTHING SWAP.
+          SOURCE 1 (MODEL): Use the human model's face, skin, and pose as the base.
+          SOURCE 2 (PRODUCT): This is the ONLY source for the garment. 100% IDENTICAL FIDELITY REQUIRED.
+          
+          STRICT REQUIREMENTS:
+          - NO HALLUCINATIONS: Do not change the lace, embroidery, or fabric texture of the product from Source 2.
+          - NO GLITCHES: Ensure the edges where the fabric meets the skin (face, neck, hands) are perfectly clean with zero artifacts, blurring, or double lines.
+          - ANATOMICAL WRAPPING: The product from Source 2 must be wrapped around the model's body perfectly, respecting the pose and gravity (natural draping).
+          - LIGHTING MATCH: Apply the lighting environment from Source 1 onto the product from Source 2 seamlessly.
+          - OUTPUT: A high-end, clean fashion photograph. 2K resolution. Aspect 9:16.` }
         ]
       },
-      config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
+      config: { imageConfig: { aspectRatio: "9:16", imageSize: "2K" } }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal gabungkan.");
+    throw new Error("Gagal menyatukan aset secara sempurna.");
   });
 };
 
@@ -59,7 +70,11 @@ export const refineAndCustomize = async (image: string, background: string, back
       contents: {
         parts: [
           { inlineData: { data: image.split(',')[1], mimeType: 'image/png' } },
-          { text: `BACKGROUND: ${background}. NEON BRANDING: Add text "${neonText}". Aspect 9:16.` }
+          { text: `PROFESSIONAL STUDIO EDIT: Change ONLY the background.
+          NEW BACKGROUND: ${background}.
+          LIGHTING: ${lightingRef}.
+          ADD BRANDING: A sleek, bright neon sign on the wall behind the model saying "${neonText}".
+          MAINTAIN OUTFIT INTEGRITY: Do not modify the model or the garment at all. High-end fashion aesthetic. 9:16.` }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
@@ -67,7 +82,7 @@ export const refineAndCustomize = async (image: string, background: string, back
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal refine.");
+    throw new Error("Gagal memproses detail.");
   });
 };
 
@@ -79,11 +94,17 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
       contents: {
         parts: [
           { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `3x3 STORYBOARD GRID: Generate 9 DIFFERENT frames of the SAME character in the SAME environment. 
-          REQUIRED VARIETY: Each frame MUST use a unique camera angle and pose. 
-          Include a mix of: Medium Shot, Extreme Close Up (face/detail), Eye Close Up, Wide Full Body, Low Angle, and Side Profile. 
-          The background, lighting, character features, outfit, and neon branding "${neonText}" must remain perfectly consistent across all 9 boxes. 
-          Output as a single 3x3 grid image. Aspect 9:16.` }
+          { text: `PREMIUM MUKENA FASHION STORYBOARD (3x3 SEAMLESS GRID): 
+          Generate 9 DIFFERENT scenes of the SAME character in the SAME studio.
+          
+          VISUAL RULES:
+          - NO grid lines, NO white borders, NO dividers. The frames must be seamless and touch each other edge-to-edge.
+          - STRICTLY PROHIBITED: NO Low Angle, NO High Angle (unsuitable for Mukena).
+          - REQUIRED ANGLES: Eye Level only. Mix of Wide Full Body, Medium Shot (Waist up), Extreme Close Up (ECU - Focus on fabric/lace detail), and Eye Close Up (Focus on model's serene expression).
+          - INTELLIGENT POSING: Analyze the garment. Include a variety of graceful poses: standing elegantly, sitting prayerfully, hands together, side profiles, and subtle fabric movements.
+          - CONSISTENCY: Model face, outfit texture, background, and neon branding "${neonText}" must be IDENTICAL across all 9 frames.
+          
+          Output as a clean 3x3 seamless montage. Aspect 9:16.` }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "2K" } }
@@ -91,7 +112,7 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal storyboard.");
+    throw new Error("Gagal membuat storyboard.");
   });
 };
 
@@ -100,16 +121,14 @@ export const extractCell = async (gridImage: string, index: number): Promise<str
     const ai = getAI();
     const pos = ["top-left", "top-center", "top-right", "middle-left", "center", "middle-right", "bottom-left", "bottom-center", "bottom-right"];
     
-    const prompt = `ACT AS AN IMAGE CROPPER.
-COMMAND: ISOLATION MODE.
-INPUT: A 3x3 Grid of storyboards.
-TARGET: Only the ${pos[index]} cell.
-ACTION: Zoom into the ${pos[index]} box. Crop the grid image so that ONLY the contents of the ${pos[index]} frame fill the entire 9:16 output.
-RESTRICTION: 
-1. DO NOT return the original 9-grid image. 
-2. REMOVE all black grid lines and borders. 
-3. OUTPUT must be a single clean 9:16 portrait image of one single pose.
-4. If there are surrounding boxes, cut them out completely.`;
+    const prompt = `ACT AS AN IMAGE CROPPER. 
+    COMMAND: ISOLATION MODE. 
+    INPUT: A seamless 3x3 montage of storyboards (no grid lines). 
+    TARGET: Only the ${pos[index]} segment. 
+    ACTION: Precisely extract the ${pos[index]} section. Crop the image so that ONLY that specific frame fills the entire 9:16 output. 
+    RESTRICTION: 
+    1. OUTPUT must be a single clean 9:16 portrait.
+    2. Ensure no slivers of adjacent frames are visible.`;
 
     const response = await ai.models.generateContent({
       model: PRO_MODEL,
@@ -125,7 +144,7 @@ RESTRICTION:
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal ekstrak.");
+    throw new Error("Gagal mengekstrak frame.");
   });
 };
 
@@ -145,7 +164,7 @@ export const generateSceneVideo = async (imageBase64: string, motionPrompt: stri
 
   const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
   const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
-  if (!response.ok) throw new Error("Gagal download video.");
+  if (!response.ok) throw new Error("Gagal mengunduh video.");
   const blob = await response.blob();
   return URL.createObjectURL(blob);
 };

@@ -56,7 +56,7 @@ const App: React.FC = () => {
   const handleActivate = () => {
     const trimmedKey = apiKeyInput.trim();
     if (!trimmedKey || trimmedKey.length < 10) {
-      setError("Masukkan API Key yang valid.");
+      setError("Harap masukkan API Key yang valid.");
       return;
     }
     (process.env as any).API_KEY = trimmedKey;
@@ -104,9 +104,9 @@ const App: React.FC = () => {
   };
 
   const handleError = (err: any) => {
-    const msg = err.message || "Terjadi kesalahan.";
+    const msg = err.message || "Terjadi kendala teknis.";
     if (msg.includes("401") || msg.includes("Requested entity was not found") || msg.includes("API_KEY_INVALID")) {
-      setError("API Key tidak valid. Masukkan ulang.");
+      setError("API Key tidak dikenali. Harap periksa kembali.");
       handleLogout();
     } else {
       setError(msg);
@@ -115,7 +115,7 @@ const App: React.FC = () => {
 
   const startProcessing = async () => {
     if (!state.modelImage || !state.productImage) return;
-    setLoadingMsg("Menyatukan Subjek & Busana...");
+    setLoadingMsg("Menyelaraskan busana pada subjek...");
     startProgress();
     try {
       const combined = await generateCombinedImage(state.modelImage, state.productImage);
@@ -126,7 +126,7 @@ const App: React.FC = () => {
 
   const handleRefine = async () => {
     if (!state.combinedImage) return;
-    setLoadingMsg("Menata Ruang Studio...");
+    setLoadingMsg("Mengonfigurasi atmosfer studio...");
     startProgress();
     try {
       const refined = await refineAndCustomize(state.combinedImage, options.background, options.backgroundRef, options.lightingRef, options.neonText, options.fontStyle);
@@ -136,7 +136,7 @@ const App: React.FC = () => {
 
   const goToStoryboard = async () => {
     if (!state.combinedImage) return;
-    setLoadingMsg("Merancang Storyboard 9-Angle...");
+    setLoadingMsg("Menyusun skenario pemotretan...");
     startProgress();
     try {
       const grid = await generateStoryboardGrid(state.combinedImage, options.neonText);
@@ -179,16 +179,17 @@ const App: React.FC = () => {
 
   if (!isActivated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#080809] p-6">
-        <div className="max-w-md w-full glass p-10 sm:p-14 rounded-[3rem] border border-blue-500/20 text-center animate-up relative z-10">
-          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-cyan-400 rounded-3xl mx-auto flex items-center justify-center mb-8 rotate-6">
+      <div className="min-h-screen flex items-center justify-center bg-[#080809] p-6 relative">
+        <div className="absolute top-0 left-0 w-full h-full bg-blue-600/5 blur-[120px] pointer-events-none"></div>
+        <div className="max-w-md w-full glass p-10 sm:p-14 rounded-[3.5rem] border border-white/5 text-center animate-up relative z-10 shadow-2xl">
+          <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-cyan-400 rounded-3xl mx-auto flex items-center justify-center mb-8 rotate-6 shadow-xl">
             <i className="fa-solid fa-key text-3xl text-white"></i>
           </div>
-          <h1 className="text-3xl font-black mb-3 tracking-tighter uppercase">Aktivasi Alat</h1>
+          <h1 className="text-3xl font-black mb-3 tracking-tighter uppercase leading-none">Aktivasi Produksi</h1>
           <p className="text-zinc-500 text-sm mb-10">Masukkan API Key Gemini untuk mulai.</p>
-          <input type="password" placeholder="AIzaSy..." value={apiKeyInput} onChange={(e) => setApiKeyInput(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-2xl py-5 px-6 mb-6 outline-none focus:ring-2 focus:ring-blue-500/50" />
-          {error && <p className="text-red-400 text-[10px] font-black uppercase mb-4">{error}</p>}
-          <button onClick={handleActivate} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black transition-all uppercase tracking-widest text-xs">AKTIFKAN</button>
+          <input type="password" placeholder="AIzaSy..." value={apiKeyInput} onChange={(e) => setApiKeyInput(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-2xl py-5 px-6 mb-6 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-center tracking-widest font-mono" />
+          {error && <p className="text-red-400 text-[10px] font-black uppercase mb-4 tracking-widest">{error}</p>}
+          <button onClick={handleActivate} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black transition-all uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20 active:scale-95">AKTIFKAN PANEL</button>
         </div>
       </div>
     );
@@ -227,6 +228,7 @@ const App: React.FC = () => {
         {loadingMsg && (
           <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/98 backdrop-blur-2xl px-6">
             <div className="relative w-24 h-24 mb-10">
+              <div className="absolute inset-0 border-4 border-blue-500/10 rounded-full"></div>
               <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
               <div className="absolute inset-0 flex items-center justify-center font-black text-xl text-blue-400">{Math.floor(loadingProgress)}%</div>
             </div>
@@ -243,13 +245,13 @@ const App: React.FC = () => {
                 <div key={u.d} className="glass p-10 rounded-[2.5rem] flex flex-col items-center text-center">
                   <h3 className="text-xl font-black mb-8 uppercase tracking-tighter">{u.t}</h3>
                   <label className="w-full h-96 border-2 border-dashed border-zinc-800 hover:border-blue-500/50 rounded-[2rem] flex flex-col items-center justify-center cursor-pointer overflow-hidden relative group">
-                    {(state as any)[`${u.d}Image`] ? <img src={(state as any)[`${u.d}Image`]} className="w-full h-full object-contain p-6" alt={u.t} /> : <div className="flex flex-col items-center opacity-40"><i className="fa-solid fa-plus text-3xl mb-4"></i><span className="text-[10px] font-black uppercase">Klik Pilih File</span></div>}
+                    {(state as any)[`${u.d}Image`] ? <img src={(state as any)[`${u.d}Image`]} className="w-full h-full object-contain p-6" alt={u.t} /> : <div className="flex flex-col items-center opacity-40 group-hover:opacity-100 transition-opacity"><i className="fa-solid fa-plus text-3xl mb-4"></i><span className="text-[10px] font-black uppercase">Pilih File</span></div>}
                     <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, u.d as any)} />
                   </label>
                 </div>
               ))}
               <div className="lg:col-span-2 flex justify-center pt-8">
-                <button disabled={!state.modelImage || !state.productImage} onClick={startProcessing} className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 px-20 py-7 rounded-3xl font-black uppercase tracking-[0.3em] shadow-2xl">Mulai Produksi</button>
+                <button disabled={!state.modelImage || !state.productImage} onClick={startProcessing} className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 px-20 py-7 rounded-3xl font-black uppercase tracking-[0.3em] shadow-2xl transition-all">Mulai Produksi</button>
               </div>
             </div>
           )}
@@ -260,12 +262,12 @@ const App: React.FC = () => {
               <div className="space-y-10">
                 <h2 className="text-3xl font-black tracking-tighter uppercase">Kustomisasi Ruang</h2>
                 <div className="glass p-8 rounded-[2.5rem] space-y-6">
-                  <div><label className="block text-[10px] font-black text-zinc-500 uppercase mb-3">Prompt Lingkungan</label><textarea value={options.background} onChange={(e) => setOptions(o => ({...o, background: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-2xl p-5 text-xs h-32 resize-none" /></div>
-                  <div><label className="block text-[10px] font-black text-blue-500 uppercase mb-3">Neon Sign Text</label><input type="text" value={options.neonText} onChange={(e) => setOptions(o => ({...o, neonText: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-sm font-black uppercase" /></div>
+                  <div><label className="block text-[10px] font-black text-zinc-500 uppercase mb-3">Prompt Lingkungan</label><textarea value={options.background} onChange={(e) => setOptions(o => ({...o, background: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-2xl p-5 text-xs h-32 resize-none outline-none focus:border-blue-500/30" /></div>
+                  <div><label className="block text-[10px] font-black text-blue-500 uppercase mb-3">Nama Brand (Neon Sign)</label><input type="text" value={options.neonText} onChange={(e) => setOptions(o => ({...o, neonText: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-sm font-black uppercase tracking-widest" /></div>
                 </div>
                 <div className="flex flex-col gap-4">
-                  <button onClick={handleRefine} className="py-5 rounded-2xl border border-white/10 hover:bg-white/5 font-bold text-[10px] uppercase">Update Preview</button>
-                  <button onClick={goToStoryboard} className="py-7 rounded-[2rem] bg-blue-600 hover:bg-blue-500 font-black uppercase tracking-[0.3em] shadow-xl">Lanjut Storyboard</button>
+                  <button onClick={handleRefine} className="py-5 rounded-2xl border border-white/10 hover:bg-white/5 font-bold text-[10px] uppercase">Perbarui Preview</button>
+                  <button onClick={goToStoryboard} className="py-7 rounded-[2rem] bg-blue-600 hover:bg-blue-500 font-black uppercase tracking-[0.3em] shadow-xl">Rancang Storyboard</button>
                 </div>
               </div>
             </div>
@@ -273,32 +275,30 @@ const App: React.FC = () => {
 
           {step === AppStep.STORYBOARD && state.storyboardGrid && (
             <div className="max-w-3xl mx-auto flex flex-col items-center animate-up">
-              <h2 className="text-3xl font-black mb-10 tracking-tighter uppercase">Master Grid 3x3</h2>
-              <div className="glass p-5 rounded-[3rem] mb-12"><img src={state.storyboardGrid} className="w-full rounded-[2.5rem] aspect-[9/16] object-contain shadow-2xl" /></div>
-              <button onClick={startExtraction} className="bg-blue-600 hover:bg-blue-500 px-24 py-8 rounded-[2rem] font-black text-lg uppercase tracking-[0.3em] shadow-xl">Ekstrak Semua Frame</button>
+              <h2 className="text-3xl font-black mb-10 tracking-tighter uppercase">Master Montage (Seamless)</h2>
+              <div className="glass p-5 rounded-[3rem] mb-12 shadow-2xl"><img src={state.storyboardGrid} className="w-full rounded-[2.5rem] aspect-[9/16] object-contain" /></div>
+              <button onClick={startExtraction} className="bg-blue-600 hover:bg-blue-500 px-24 py-8 rounded-[2rem] font-black text-lg uppercase tracking-[0.3em] shadow-xl">Mulai Ekstraksi</button>
             </div>
           )}
 
           {step === AppStep.RESULTS && (
             <div className="space-y-12 animate-up">
               <div className="flex justify-between items-end px-4">
-                <div><h2 className="text-3xl font-black tracking-tighter mb-2">Final Output Assets</h2><p className="text-[10px] font-black text-zinc-500 uppercase">9 Scenes Diekstrak</p></div>
+                <div><h2 className="text-3xl font-black tracking-tighter mb-2">Final Output Assets</h2><p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">9 Scenes Berhasil Diekstrak</p></div>
                 <div className="text-right">
-                  <p className="text-[9px] font-black text-blue-500 uppercase mb-2">Extraction Progress</p>
+                  <p className="text-[9px] font-black text-blue-500 uppercase mb-2">Progress Ekstraksi</p>
                   <div className="w-48 h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-blue-600 transition-all duration-700" style={{ width: `${state.extractionProgress}%` }}></div></div>
                 </div>
               </div>
 
               <div className="grid lg:grid-cols-4 gap-10">
-                {/* View Master (Sidebar Referensi) */}
                 <div className="lg:col-span-1 space-y-6">
                   <div className="glass p-4 rounded-[2rem] sticky top-10 border-blue-500/10">
-                    <p className="text-[10px] font-black text-blue-500 uppercase mb-4 text-center">Master Reference</p>
+                    <p className="text-[10px] font-black text-blue-500 uppercase mb-4 text-center tracking-widest">Master Reference</p>
                     <img src={state.storyboardGrid || ''} className="w-full rounded-[1.5rem] aspect-[9/16] object-contain shadow-2xl bg-black/20" />
                   </div>
                 </div>
 
-                {/* Grid Hasil Ekstraksi - Diubah menjadi 3 Kolom */}
                 <div className="lg:col-span-3 grid md:grid-cols-3 gap-6">
                   {state.scenes.map((scene, idx) => (
                     <div key={scene.id} className="glass p-5 rounded-[2.5rem] flex flex-col h-full group">
@@ -319,7 +319,7 @@ const App: React.FC = () => {
                       </div>
                       {scene.image && !scene.videoUrl && (
                         <div className="mt-auto space-y-3">
-                          <textarea placeholder="Gerakan: Cinematic flow..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/20 border border-white/5 rounded-xl p-3 text-[10px] h-16 resize-none outline-none font-medium" />
+                          <textarea placeholder="Deskripsi gerakan..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/20 border border-white/5 rounded-xl p-3 text-[10px] h-16 resize-none outline-none font-medium" />
                           <button disabled={scene.isGeneratingVideo} onClick={() => handleGenerateVideo(scene.id)} className="w-full py-3 rounded-xl bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 text-[10px] font-black uppercase tracking-widest transition-all">
                             {scene.isGeneratingVideo ? <i className="fa-solid fa-spinner fa-spin"></i> : <><i className="fa-solid fa-video mr-2"></i> Render Video</>}
                           </button>
