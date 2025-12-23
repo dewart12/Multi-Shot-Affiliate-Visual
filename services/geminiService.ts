@@ -13,15 +13,12 @@ async function callWithRetry<T>(fn: () => Promise<T>, onRetry?: (msg: string) =>
     } catch (error: any) {
       lastError = error;
       const errorStr = (error.message || "").toLowerCase();
-      
-      // Jika error 404/Not Found, kemungkinan besar key belum aktif/dipilih
       if (errorStr.includes("not found") || errorStr.includes("api_key_missing")) {
         throw new Error("API_KEY_MISSING");
       }
-
       if (errorStr.includes("429") || errorStr.includes("resource_exhausted") || errorStr.includes("500") || errorStr.includes("503")) {
         const waitTime = (attempt + 1) * 12000; 
-        if (onRetry) onRetry(`Server Pro Padat. Menunggu jatah (${waitTime/1000}s)...`);
+        if (onRetry) onRetry(`Server Padat. Antri ulang (${waitTime/1000}s)...`);
         await sleep(waitTime);
         continue;
       }
@@ -31,16 +28,10 @@ async function callWithRetry<T>(fn: () => Promise<T>, onRetry?: (msg: string) =>
   throw lastError;
 }
 
-const getAI = () => {
-  const key = process.env.API_KEY;
-  if (!key || key === 'undefined') throw new Error("API_KEY_MISSING");
-  // Selalu buat instance baru untuk memastikan key terbaru dari dialog Google terbaca
-  return new GoogleGenAI({ apiKey: key });
-};
-
 export const generateCombinedImage = async (modelBase64: string, productBase64: string, onStatus?: (s: string) => void): Promise<string> => {
   return callWithRetry(async () => {
-    const ai = getAI();
+    // Selalu inisialisasi di dalam fungsi untuk ambil key TERBARU
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
       contents: {
@@ -55,13 +46,13 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal menyatukan aset dengan model Pro.");
+    throw new Error("Gagal menyatukan aset Pro.");
   }, onStatus);
 };
 
 export const refineAndCustomize = async (image: string, background: string, backgroundRef: string, lightingRef: string, neonText: string, fontStyle: string, onStatus?: (s: string) => void): Promise<string> => {
   return callWithRetry(async () => {
-    const ai = getAI();
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
       contents: {
@@ -81,13 +72,13 @@ export const refineAndCustomize = async (image: string, background: string, back
 
 export const generateStoryboardGrid = async (baseImage: string, neonText: string, onStatus?: (s: string) => void): Promise<string> => {
   return callWithRetry(async () => {
-    const ai = getAI();
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `PREMIUM FASHION STORYBOARD (3x3 SEAMLESS GRID): 9 DIFFERENT scenes of SAME character with neon branding "${neonText}". No grid lines. Aspect 9:16. 1K Resolution.` }
+          { text: `PREMIUM FASHION STORYBOARD (3x3 SEAMLESS GRID): 9 DIFFERENT scenes of SAME character with neon branding "${neonText}". Aspect 9:16. 1K Resolution.` }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
@@ -101,7 +92,7 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
 
 export const extractCell = async (gridImage: string, index: number, onStatus?: (s: string) => void): Promise<string> => {
   return callWithRetry(async () => {
-    const ai = getAI();
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const pos = ["top-left", "top-center", "top-right", "middle-left", "center", "middle-right", "bottom-left", "bottom-center", "bottom-right"];
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
@@ -121,7 +112,7 @@ export const extractCell = async (gridImage: string, index: number, onStatus?: (
 };
 
 export const generateSceneVideo = async (imageBase64: string, motionPrompt: string): Promise<string> => {
-  const ai = getAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   let operation = await ai.models.generateVideos({
     model: VEO_MODEL,
     prompt: motionPrompt,
