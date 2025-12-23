@@ -14,10 +14,8 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 6): Promise<T
     } catch (error: any) {
       lastError = error;
       const errorStr = JSON.stringify(error) || error.message || "";
-      
-      if (errorStr.includes("429") || errorStr.includes("RESOURCE_REHAUSTED") || errorStr.includes("quota")) {
-        let waitTime = Math.pow(2, attempt) * 20000;
-        await sleep(waitTime);
+      if (errorStr.includes("429") || errorStr.includes("RESOURCE_REHAUSTED")) {
+        await sleep(Math.pow(2, attempt) * 15000);
         continue;
       }
       throw error;
@@ -26,9 +24,6 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 6): Promise<T
   throw lastError;
 }
 
-/**
- * Mendapatkan instance AI baru dengan key terbaru dari environment.
- */
 const getAI = () => {
   const key = process.env.API_KEY;
   if (!key) throw new Error("API_KEY_MISSING");
@@ -44,7 +39,7 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
         parts: [
           { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } },
           { inlineData: { data: productBase64.split(',')[1], mimeType: 'image/png' } },
-          { text: "DIGITAL COMPOSITING: Fit the garment onto the model naturally. Vertical 9:16 format." }
+          { text: "DIGITAL COMPOSITING: Fit the garment onto the model naturally. Vertical 9:16 portrait format." }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
@@ -52,7 +47,7 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal gabungkan aset.");
+    throw new Error("Gagal gabungkan.");
   });
 };
 
@@ -64,7 +59,7 @@ export const refineAndCustomize = async (image: string, background: string, back
       contents: {
         parts: [
           { inlineData: { data: image.split(',')[1], mimeType: 'image/png' } },
-          { text: `BACKGROUND: ${background}. NEON BRANDING: Text "${neonText}". Aspect 9:16.` }
+          { text: `BACKGROUND: ${background}. NEON BRANDING: Add text "${neonText}". Aspect 9:16.` }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
@@ -84,7 +79,11 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
       contents: {
         parts: [
           { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `3x3 STORYBOARD GRID: Generate 9 different poses in a single image grid. Keep neon "${neonText}" visible. Aspect 9:16.` }
+          { text: `3x3 STORYBOARD GRID: Generate 9 DIFFERENT frames of the SAME character in the SAME environment. 
+          REQUIRED VARIETY: Each frame MUST use a unique camera angle and pose. 
+          Include a mix of: Medium Shot, Extreme Close Up (face/detail), Eye Close Up, Wide Full Body, Low Angle, and Side Profile. 
+          The background, lighting, character features, outfit, and neon branding "${neonText}" must remain perfectly consistent across all 9 boxes. 
+          Output as a single 3x3 grid image. Aspect 9:16.` }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "2K" } }
@@ -101,13 +100,16 @@ export const extractCell = async (gridImage: string, index: number): Promise<str
     const ai = getAI();
     const pos = ["top-left", "top-center", "top-right", "middle-left", "center", "middle-right", "bottom-left", "bottom-center", "bottom-right"];
     
-    // Prompt diperkuat untuk memaksa AI melakukan isolasi frame (Crop)
-    const prompt = `CRITICAL TASK: IMAGE CROP & ISOLATION.
-INPUT: A 3x3 storyboard grid image.
-TARGET: Focus exclusively on the ${pos[index]} cell.
-ACTION: Zoom in and crop so that ONLY the contents of the ${pos[index]} cell are visible. 
-OUTPUT: A single isolated 9:16 portrait image. 
-RESTRICTION: Do not return the whole grid. Remove all grid lines and neighboring cells. Ensure high fidelity for the single pose.`;
+    const prompt = `ACT AS AN IMAGE CROPPER.
+COMMAND: ISOLATION MODE.
+INPUT: A 3x3 Grid of storyboards.
+TARGET: Only the ${pos[index]} cell.
+ACTION: Zoom into the ${pos[index]} box. Crop the grid image so that ONLY the contents of the ${pos[index]} frame fill the entire 9:16 output.
+RESTRICTION: 
+1. DO NOT return the original 9-grid image. 
+2. REMOVE all black grid lines and borders. 
+3. OUTPUT must be a single clean 9:16 portrait image of one single pose.
+4. If there are surrounding boxes, cut them out completely.`;
 
     const response = await ai.models.generateContent({
       model: PRO_MODEL,
@@ -143,27 +145,7 @@ export const generateSceneVideo = async (imageBase64: string, motionPrompt: stri
 
   const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
   const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
-  if (!response.ok) throw new Error("Gagal mengunduh aset video.");
+  if (!response.ok) throw new Error("Gagal download video.");
   const blob = await response.blob();
   return URL.createObjectURL(blob);
-};
-
-export const upscaleScene = async (imageBase64: string): Promise<string> => {
-  return callWithRetry(async () => {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: PRO_MODEL,
-      contents: {
-        parts: [
-          { inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } },
-          { text: "UPSCALE 2K QUALITY." }
-        ]
-      },
-      config: { imageConfig: { aspectRatio: "9:16", imageSize: "2K" } }
-    });
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
-    }
-    throw new Error("Upscale gagal.");
-  });
 };
