@@ -1,7 +1,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-const PRO_MODEL = 'gemini-3-pro-image-preview';
+const PRO_IMAGE_MODEL = 'gemini-3-pro-image-preview';
 const VEO_MODEL = 'veo-3.1-fast-generate-preview';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -15,10 +15,14 @@ async function callWithRetry<T>(fn: () => Promise<T>, onRetry?: (msg: string) =>
       lastError = error;
       const errorStr = JSON.stringify(error) || error.message || "";
       
+      // Jika error "Requested entity was not found", kemungkinan besar API Key bermasalah/belum dipilih
+      if (errorStr.includes("Requested entity was not found")) {
+        throw new Error("API_KEY_RESET_REQUIRED");
+      }
+
       if (errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("500") || errorStr.includes("503")) {
-        // Karena sudah 1K, cooldown bisa lebih singkat (10-15 detik)
-        const waitTime = (attempt + 1) * 15000; 
-        if (onRetry) onRetry(`Server Padat. Menunggu jatah kuota (${waitTime/1000}s)...`);
+        const waitTime = (attempt + 1) * 12000; 
+        if (onRetry) onRetry(`Server Pro Padat. Menunggu jatah (${waitTime/1000}s)...`);
         await sleep(waitTime);
         continue;
       }
@@ -38,7 +42,7 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
   return callWithRetry(async () => {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: PRO_MODEL,
+      model: PRO_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } },
@@ -51,7 +55,7 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal menyatukan aset secara sempurna.");
+    throw new Error("Gagal menyatukan aset dengan model Pro.");
   }, onStatus);
 };
 
@@ -59,11 +63,11 @@ export const refineAndCustomize = async (image: string, background: string, back
   return callWithRetry(async () => {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: PRO_MODEL,
+      model: PRO_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: image.split(',')[1], mimeType: 'image/png' } },
-          { text: `Change ONLY background to ${background}. Lighting: ${lightingRef}. Add branding neon sign: "${neonText}". Aspect 9:16.` }
+          { text: `Change ONLY background to ${background}. Lighting: ${lightingRef}. Add branding neon sign: "${neonText}". Aspect 9:16. 1K resolution.` }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
@@ -71,7 +75,7 @@ export const refineAndCustomize = async (image: string, background: string, back
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal memproses detail.");
+    throw new Error("Gagal memproses detail Pro.");
   }, onStatus);
 };
 
@@ -79,11 +83,11 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
   return callWithRetry(async () => {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: PRO_MODEL,
+      model: PRO_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `PREMIUM MUKENA FASHION STORYBOARD (3x3 SEAMLESS GRID): Generate 9 DIFFERENT scenes of SAME character with neon branding "${neonText}". No grid lines. Aspect 9:16. 1K Resolution.` }
+          { text: `PREMIUM FASHION STORYBOARD (3x3 SEAMLESS GRID): 9 DIFFERENT scenes of SAME character with neon branding "${neonText}". No grid lines. Aspect 9:16. 1K Resolution.` }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
@@ -91,7 +95,7 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal membuat storyboard.");
+    throw new Error("Gagal membuat storyboard Pro.");
   }, onStatus);
 };
 
@@ -100,11 +104,11 @@ export const extractCell = async (gridImage: string, index: number, onStatus?: (
     const ai = getAI();
     const pos = ["top-left", "top-center", "top-right", "middle-left", "center", "middle-right", "bottom-left", "bottom-center", "bottom-right"];
     const response = await ai.models.generateContent({
-      model: PRO_MODEL,
+      model: PRO_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: gridImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `Crop and extract ONLY the ${pos[index]} frame from this 3x3 montage. Output single 9:16 portrait.` }
+          { text: `Crop and extract ONLY the ${pos[index]} frame from this montage. Output single 9:16 portrait. 1K quality.` }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
@@ -112,7 +116,7 @@ export const extractCell = async (gridImage: string, index: number, onStatus?: (
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal mengekstrak frame.");
+    throw new Error("Gagal mengekstrak frame Pro.");
   }, onStatus);
 };
 

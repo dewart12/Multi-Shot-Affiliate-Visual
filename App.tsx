@@ -9,9 +9,19 @@ import {
   generateSceneVideo
 } from './services/geminiService.ts';
 
+// Declare aistudio for TS matching environment definitions to fix modifier and type conflict errors.
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+  interface Window {
+    readonly aistudio: AIStudio;
+  }
+}
+
 const App: React.FC = () => {
   const [isActivated, setIsActivated] = useState<boolean>(false);
-  const [apiKeyInput, setApiKeyInput] = useState<string>('');
   const [step, setStep] = useState<AppStep>(AppStep.UPLOAD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
@@ -47,30 +57,25 @@ const App: React.FC = () => {
   const progressIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const savedKey = sessionStorage.getItem('user_api_key');
-    if (savedKey) {
-      (process.env as any).API_KEY = savedKey;
-      setIsActivated(true);
-    }
+    const checkKey = async () => {
+      // Accessing aistudio from window as defined in the global augmentation.
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (hasKey) {
+        setIsActivated(true);
+      }
+    };
+    checkKey();
   }, []);
 
-  const handleActivate = () => {
-    const trimmedKey = apiKeyInput.trim();
-    if (!trimmedKey || trimmedKey.length < 10) {
-      setError("Harap masukkan API Key yang valid.");
-      return;
+  const handleActivate = async () => {
+    try {
+      await window.aistudio.openSelectKey();
+      // Per aturan: asumsikan sukses setelah trigger dialog untuk menghindari race condition
+      setIsActivated(true);
+      setError(null);
+    } catch (err: any) {
+      setError("Gagal membuka pemilihan key.");
     }
-    (process.env as any).API_KEY = trimmedKey;
-    sessionStorage.setItem('user_api_key', trimmedKey);
-    setIsActivated(true);
-    setError(null);
-  };
-
-  const handleLogout = () => {
-    sessionStorage.removeItem('user_api_key');
-    (process.env as any).API_KEY = "";
-    setIsActivated(false);
-    setApiKeyInput("");
   };
 
   const startProgress = () => {
@@ -109,9 +114,12 @@ const App: React.FC = () => {
 
   const handleError = (err: any) => {
     const msg = err.message || "Terjadi kendala teknis.";
-    if (msg.includes("401") || msg.includes("Requested entity was not found") || msg.includes("API_KEY_INVALID")) {
-      setError("API Key tidak dikenali. Harap periksa kembali.");
-      handleLogout();
+    if (msg === "API_KEY_RESET_REQUIRED") {
+      setError("Sesi API berakhir atau project tidak ditemukan. Silakan pilih kembali Project Key Anda.");
+      setIsActivated(false);
+    } else if (msg.includes("401") || msg.includes("API_KEY_INVALID")) {
+      setError("API Key tidak valid. Harap pilih Project dengan billing aktif.");
+      setIsActivated(false);
     } else {
       setError(msg);
     }
@@ -119,7 +127,7 @@ const App: React.FC = () => {
 
   const startProcessing = async () => {
     if (!state.modelImage || !state.productImage) return;
-    setLoadingMsg("Menyelaraskan busana pada subjek...");
+    setLoadingMsg("Menyelaraskan busana (Gemini Pro)...");
     startProgress();
     try {
       const combined = await generateCombinedImage(state.modelImage, state.productImage, setRetryMsg);
@@ -130,7 +138,7 @@ const App: React.FC = () => {
 
   const handleRefine = async () => {
     if (!state.combinedImage) return;
-    setLoadingMsg("Mengonfigurasi atmosfer studio...");
+    setLoadingMsg("Mengonfigurasi detail Pro...");
     startProgress();
     try {
       const refined = await refineAndCustomize(state.combinedImage, options.background, options.backgroundRef, options.lightingRef, options.neonText, options.fontStyle, setRetryMsg);
@@ -140,7 +148,7 @@ const App: React.FC = () => {
 
   const goToStoryboard = async () => {
     if (!state.combinedImage) return;
-    setLoadingMsg("Menyusun skenario pemotretan...");
+    setLoadingMsg("Menyusun Storyboard Pro...");
     startProgress();
     try {
       const grid = await generateStoryboardGrid(state.combinedImage, options.neonText, setRetryMsg);
@@ -161,10 +169,11 @@ const App: React.FC = () => {
           extractionProgress: Math.round(((i + 1) / 9) * 100)
         }));
         setRetryMsg('');
-        if (i < 8) await new Promise(r => setTimeout(r, 5000));
+        if (i < 8) await new Promise(r => setTimeout(r, 4000));
       } catch (err: any) {
         handleError(err);
         setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: false } : s) }));
+        break; // Stop jika error krusial
       }
     }
   };
@@ -188,13 +197,18 @@ const App: React.FC = () => {
         <div className="absolute top-0 left-0 w-full h-full bg-blue-600/5 blur-[120px] pointer-events-none"></div>
         <div className="max-w-md w-full glass p-10 sm:p-14 rounded-[3.5rem] border border-white/5 text-center animate-up relative z-10 shadow-2xl">
           <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-cyan-400 rounded-3xl mx-auto flex items-center justify-center mb-8 rotate-6 shadow-xl">
-            <i className="fa-solid fa-key text-3xl text-white"></i>
+            <i className="fa-solid fa-crown text-3xl text-white"></i>
           </div>
-          <h1 className="text-3xl font-black mb-3 tracking-tighter uppercase leading-none">Aktivasi Produksi</h1>
-          <p className="text-zinc-500 text-sm mb-10">Masukkan API Key Gemini untuk mulai.</p>
-          <input type="password" placeholder="AIzaSy..." value={apiKeyInput} onChange={(e) => setApiKeyInput(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-2xl py-5 px-6 mb-6 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all text-center tracking-widest font-mono" />
-          {error && <p className="text-red-400 text-[10px] font-black uppercase mb-4 tracking-widest">{error}</p>}
-          <button onClick={handleActivate} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black transition-all uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20 active:scale-95">AKTIFKAN PANEL</button>
+          <h1 className="text-3xl font-black mb-3 tracking-tighter uppercase leading-none">Gemini 3 Pro <br/><span className="text-blue-500">Production Mode</span></h1>
+          <p className="text-zinc-500 text-sm mb-10">Gunakan Project Google Cloud dengan billing aktif untuk akses model Pro dan Veo.</p>
+          
+          <button onClick={handleActivate} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black transition-all uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20 active:scale-95 mb-6">PILIH PROJECT KEY</button>
+          
+          <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest hover:text-blue-400 transition-colors">
+            Pelajari Billing & Kuota <i className="fa-solid fa-external-link ml-1"></i>
+          </a>
+
+          {error && <p className="mt-8 text-red-400 text-[10px] font-black uppercase tracking-widest bg-red-500/10 p-4 rounded-xl border border-red-500/20">{error}</p>}
         </div>
       </div>
     );
@@ -203,7 +217,7 @@ const App: React.FC = () => {
   const steps = [
     { id: AppStep.UPLOAD, label: 'Upload Assets', icon: 'fa-cloud-arrow-up', isUnlocked: true },
     { id: AppStep.REFINE, label: 'Refine & Text', icon: 'fa-wand-magic-sparkles', isUnlocked: !!state.combinedImage },
-    { id: AppStep.STORYBOARD, label: 'Storyboard', icon: 'fa-border-all', isUnlocked: !!state.storyboardGrid },
+    { id: AppStep.STORYBOARD, label: 'Pro Storyboard', icon: 'fa-border-all', isUnlocked: !!state.storyboardGrid },
     { id: AppStep.RESULTS, label: 'Final Output', icon: 'fa-film', isUnlocked: state.scenes.some(s => s.image !== null) },
   ];
 
@@ -212,8 +226,8 @@ const App: React.FC = () => {
       <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-[#0f0f11]/95 backdrop-blur-2xl border-r border-white/5 transition-transform lg:translate-x-0 lg:static flex-shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-8 h-full flex flex-col">
           <div className="flex items-center gap-4 mb-16">
-            <div className="w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg"><i className="fa-solid fa-bolt text-white"></i></div>
-            <span className="text-lg font-black tracking-tighter uppercase leading-tight">Multishot <br/><span className="text-blue-500">Affiliate AI</span></span>
+            <div className="w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg"><i className="fa-solid fa-crown text-white"></i></div>
+            <span className="text-lg font-black tracking-tighter uppercase leading-tight">Multishot <br/><span className="text-blue-500">Pro Edition</span></span>
           </div>
           <nav className="space-y-3 flex-1">
             {steps.map((s) => (
@@ -224,7 +238,7 @@ const App: React.FC = () => {
             ))}
           </nav>
           <div className="pt-8 border-t border-white/5 space-y-4">
-             <button onClick={handleLogout} className="w-full py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest hover:bg-red-500/10 hover:text-red-400 rounded-xl transition-all">Ganti API Key</button>
+             <button onClick={() => setIsActivated(false)} className="w-full py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest hover:bg-white/5 rounded-xl transition-all">Ganti Project Key</button>
           </div>
         </div>
       </aside>
@@ -257,7 +271,7 @@ const App: React.FC = () => {
                 </div>
               ))}
               <div className="lg:col-span-2 flex justify-center pt-8">
-                <button disabled={!state.modelImage || !state.productImage} onClick={startProcessing} className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 px-20 py-7 rounded-3xl font-black uppercase tracking-[0.3em] shadow-2xl transition-all">Mulai Produksi</button>
+                <button disabled={!state.modelImage || !state.productImage} onClick={startProcessing} className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 px-20 py-7 rounded-3xl font-black uppercase tracking-[0.3em] shadow-2xl transition-all">Mulai Produksi Pro</button>
               </div>
             </div>
           )}
@@ -266,7 +280,7 @@ const App: React.FC = () => {
             <div className="grid lg:grid-cols-2 gap-12 animate-up">
               <div className="glass p-4 rounded-[3rem] sticky top-14 self-start"><img src={state.combinedImage} className="w-full rounded-[2.5rem] aspect-[9/16] object-contain bg-black/50" /></div>
               <div className="space-y-10">
-                <h2 className="text-3xl font-black tracking-tighter uppercase">Kustomisasi Ruang</h2>
+                <h2 className="text-3xl font-black tracking-tighter uppercase">Kustomisasi Ruang (Pro)</h2>
                 <div className="glass p-8 rounded-[2.5rem] space-y-6">
                   <div><label className="block text-[10px] font-black text-zinc-500 uppercase mb-3">Prompt Lingkungan</label><textarea value={options.background} onChange={(e) => setOptions(o => ({...o, background: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-2xl p-5 text-xs h-32 resize-none outline-none focus:border-blue-500/30" /></div>
                   <div><label className="block text-[10px] font-black text-blue-500 uppercase mb-3">Nama Brand (Neon Sign)</label><input type="text" value={options.neonText} onChange={(e) => setOptions(o => ({...o, neonText: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-sm font-black uppercase tracking-widest" /></div>
@@ -281,7 +295,7 @@ const App: React.FC = () => {
 
           {step === AppStep.STORYBOARD && state.storyboardGrid && (
             <div className="max-w-3xl mx-auto flex flex-col items-center animate-up">
-              <h2 className="text-3xl font-black mb-10 tracking-tighter uppercase">Master Montage (Seamless)</h2>
+              <h2 className="text-3xl font-black mb-10 tracking-tighter uppercase">Master Montage Pro (1K)</h2>
               <div className="glass p-5 rounded-[3rem] mb-12 shadow-2xl"><img src={state.storyboardGrid} className="w-full rounded-[2.5rem] aspect-[9/16] object-contain" /></div>
               <button onClick={startExtraction} className="bg-blue-600 hover:bg-blue-500 px-24 py-8 rounded-[2rem] font-black text-lg uppercase tracking-[0.3em] shadow-xl">Mulai Ekstraksi</button>
             </div>
@@ -290,7 +304,7 @@ const App: React.FC = () => {
           {step === AppStep.RESULTS && (
             <div className="space-y-12 animate-up">
               <div className="flex justify-between items-end px-4">
-                <div><h2 className="text-3xl font-black tracking-tighter mb-2">Final Output Assets</h2><p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">9 Scenes Berhasil Diekstrak</p></div>
+                <div><h2 className="text-3xl font-black tracking-tighter mb-2">Final Pro Assets</h2><p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">High Fidelity Output</p></div>
                 <div className="text-right">
                   <p className="text-[9px] font-black text-blue-500 uppercase mb-2">Progress Ekstraksi</p>
                   <div className="w-48 h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-blue-600 transition-all duration-700" style={{ width: `${state.extractionProgress}%` }}></div></div>
@@ -325,7 +339,7 @@ const App: React.FC = () => {
                       </div>
                       {scene.image && !scene.videoUrl && (
                         <div className="mt-auto space-y-3">
-                          <textarea placeholder="Deskripsi gerakan..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/20 border border-white/5 rounded-xl p-3 text-[10px] h-16 resize-none outline-none font-medium" />
+                          <textarea placeholder="Motion prompt..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/20 border border-white/5 rounded-xl p-3 text-[10px] h-16 resize-none outline-none font-medium" />
                           <button disabled={scene.isGeneratingVideo} onClick={() => handleGenerateVideo(scene.id)} className="w-full py-3 rounded-xl bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 text-[10px] font-black uppercase tracking-widest transition-all">
                             {scene.isGeneratingVideo ? <i className="fa-solid fa-spinner fa-spin"></i> : <><i className="fa-solid fa-video mr-2"></i> Render Video</>}
                           </button>
