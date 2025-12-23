@@ -75,10 +75,10 @@ const App: React.FC = () => {
   const handleActivate = async () => {
     try {
       if (window.aistudio?.openSelectKey) {
-        window.aistudio.openSelectKey();
+        await window.aistudio.openSelectKey();
       }
     } catch (e) {
-      console.warn("Pop-up diblokir, mengaktifkan mode mandiri.");
+      console.warn("Pop-up diblokir atau gagal.");
     }
     setIsActivated(true);
     setError(null);
@@ -119,8 +119,10 @@ const App: React.FC = () => {
 
   const handleError = (err: any) => {
     const msg = err.message || "Terjadi kendala teknis.";
-    if (msg === "API_KEY_RESET_REQUIRED" || msg.includes("Requested entity was not found")) {
-      setError("Project tidak ditemukan. Silakan pilih kembali Project Key Anda.");
+    if (msg.includes("API_KEY_MISSING")) {
+      setError("API_KEY_MISSING: Project Belum Dipilih. Klik tombol 'PILIH PROJECT' di bawah.");
+    } else if (msg === "API_KEY_RESET_REQUIRED" || msg.includes("Requested entity was not found")) {
+      setError("Project tidak ditemukan atau API Key expired. Silakan pilih kembali.");
       setIsActivated(false);
     } else {
       setError(msg);
@@ -129,17 +131,19 @@ const App: React.FC = () => {
 
   const startProcessing = async () => {
     if (!state.modelImage || !state.productImage) return;
+    setError(null);
     setLoadingMsg("Menyelaraskan busana (Gemini Pro)...");
     startProgress();
     try {
       const combined = await generateCombinedImage(state.modelImage, state.productImage, setRetryMsg);
       setState(prev => ({ ...prev, combinedImage: combined }));
-      setStep(AppStep.REFINE); // Langsung pindah ke tahap Refine setelah sukses
+      setStep(AppStep.REFINE);
     } catch (err: any) { handleError(err); } finally { setLoadingMsg(''); stopProgress(); }
   };
 
   const handleRefine = async () => {
     if (!state.combinedImage) return;
+    setError(null);
     setLoadingMsg("Mengonfigurasi detail Pro...");
     startProgress();
     try {
@@ -150,6 +154,7 @@ const App: React.FC = () => {
 
   const goToStoryboard = async () => {
     if (!state.combinedImage) return;
+    setError(null);
     setLoadingMsg("Menyusun Storyboard Pro...");
     startProgress();
     try {
@@ -161,6 +166,7 @@ const App: React.FC = () => {
 
   const startExtraction = async () => {
     setStep(AppStep.RESULTS);
+    setError(null);
     for (let i = 0; i < 9; i++) {
       setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: true } : s) }));
       try {
@@ -183,6 +189,7 @@ const App: React.FC = () => {
   const handleGenerateVideo = async (id: number) => {
     const scene = state.scenes[id];
     if (!scene.image) return;
+    setError(null);
     setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, isGeneratingVideo: true } : s)}));
     try {
       const videoUrl = await generateSceneVideo(scene.image, scenePrompts[id]);
@@ -202,21 +209,20 @@ const App: React.FC = () => {
             <i className="fa-solid fa-crown text-3xl text-white"></i>
           </div>
           <h1 className="text-3xl font-black mb-3 tracking-tighter uppercase leading-none">Gemini 3 Pro <br/><span className="text-blue-500">Production Mode</span></h1>
-          <p className="text-zinc-500 text-sm mb-10 leading-relaxed">Pilih Project Google Cloud Anda (atau Bypass) untuk akses fitur profesional secara mandiri.</p>
+          <p className="text-zinc-500 text-sm mb-10 leading-relaxed">Aktifkan Project Google Cloud Anda untuk mulai memproses gambar.</p>
           
-          <button onClick={handleActivate} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black transition-all uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20 active:scale-95 mb-10">MASUK KE APLIKASI</button>
+          <button onClick={handleActivate} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black transition-all uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20 active:scale-95 mb-10">PILIH PROJECT SEKARANG</button>
           
           <div className="flex flex-col gap-4">
             <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest hover:text-blue-400 transition-colors">
               Tutorial Billing & API Key <i className="fa-solid fa-external-link ml-1"></i>
             </a>
-            <p className="text-[8px] text-zinc-700 uppercase font-black tracking-widest">Akses terisolasi demi keamanan akun Anda</p>
           </div>
 
           {error && (
             <div className="mt-8 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
               <p className="text-red-400 text-[9px] font-black uppercase tracking-widest mb-2">{error}</p>
-              <button onClick={() => setIsActivated(true)} className="text-[9px] font-black text-blue-500 uppercase underline">Klik Untuk Lewati</button>
+              <button onClick={() => setIsActivated(true)} className="text-[9px] font-black text-blue-500 uppercase underline">Bypass Ke Dashboard</button>
             </div>
           )}
         </div>
@@ -248,7 +254,7 @@ const App: React.FC = () => {
             ))}
           </nav>
           <div className="pt-8 border-t border-white/5">
-             <button onClick={() => setIsActivated(false)} className="w-full py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest hover:bg-white/5 rounded-xl transition-all">Ganti Project Key</button>
+             <button onClick={handleActivate} className="w-full py-4 text-[10px] font-black text-blue-500 border border-blue-500/20 uppercase tracking-widest hover:bg-blue-500/10 rounded-xl transition-all">Hubungkan Project Key</button>
           </div>
         </div>
       </aside>
@@ -267,7 +273,18 @@ const App: React.FC = () => {
         )}
 
         <div className="max-w-[1400px] mx-auto pb-32">
-          {error && <div className="mb-8 p-5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center justify-between"><span className="text-xs font-bold uppercase">{error}</span><button onClick={() => setError(null)}>&times;</button></div>}
+          {error && (
+            <div className="mb-8 p-6 bg-red-500/10 border border-red-500/20 text-red-400 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-4 animate-up">
+              <div className="flex items-center gap-4">
+                <i className="fa-solid fa-triangle-exclamation text-2xl"></i>
+                <span className="text-xs font-black uppercase tracking-widest">{error}</span>
+              </div>
+              <div className="flex gap-4">
+                <button onClick={handleActivate} className="px-6 py-3 bg-red-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-400 transition-all shadow-lg shadow-red-500/20">PILIH PROJECT</button>
+                <button onClick={() => setError(null)} className="p-3 text-red-400/50 hover:text-red-400 transition-colors">&times;</button>
+              </div>
+            </div>
+          )}
 
           {step === AppStep.UPLOAD && (
             <div className="grid lg:grid-cols-2 gap-8 animate-up">
