@@ -10,7 +10,7 @@ import { GoogleGenAI } from "@google/genai";
  */
 const getApiKey = () => {
   // Prioritas ke GEMINI_API_KEY sesuai standar deployment AI Studio
-  return process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+  return process.env.GEMINI_API_KEY || process.env.API_KEY || "AIzaSyAhsMqPWuM7RSBRc-HK1z_3FxglWkH0piM";
 };
 
 // Menggunakan Gemini 3 Pro sesuai request untuk stabilitas lebih baik
