@@ -42,6 +42,7 @@ const App: React.FC = () => {
   
   const [error, setError] = useState<string | null>(null);
   const [loadingMsg, setLoadingMsg] = useState('');
+  const [retryMsg, setRetryMsg] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(0);
   const progressIntervalRef = useRef<number | null>(null);
 
@@ -88,7 +89,10 @@ const App: React.FC = () => {
       progressIntervalRef.current = null;
     }
     setLoadingProgress(100);
-    setTimeout(() => setLoadingProgress(0), 500);
+    setTimeout(() => {
+      setLoadingProgress(0);
+      setRetryMsg('');
+    }, 500);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'model' | 'product') => {
@@ -118,7 +122,7 @@ const App: React.FC = () => {
     setLoadingMsg("Menyelaraskan busana pada subjek...");
     startProgress();
     try {
-      const combined = await generateCombinedImage(state.modelImage, state.productImage);
+      const combined = await generateCombinedImage(state.modelImage, state.productImage, setRetryMsg);
       setState(prev => ({ ...prev, combinedImage: combined }));
       setStep(AppStep.REFINE);
     } catch (err: any) { handleError(err); } finally { setLoadingMsg(''); stopProgress(); }
@@ -129,7 +133,7 @@ const App: React.FC = () => {
     setLoadingMsg("Mengonfigurasi atmosfer studio...");
     startProgress();
     try {
-      const refined = await refineAndCustomize(state.combinedImage, options.background, options.backgroundRef, options.lightingRef, options.neonText, options.fontStyle);
+      const refined = await refineAndCustomize(state.combinedImage, options.background, options.backgroundRef, options.lightingRef, options.neonText, options.fontStyle, setRetryMsg);
       setState(prev => ({ ...prev, combinedImage: refined }));
     } catch (err: any) { handleError(err); } finally { setLoadingMsg(''); stopProgress(); }
   };
@@ -139,7 +143,7 @@ const App: React.FC = () => {
     setLoadingMsg("Menyusun skenario pemotretan...");
     startProgress();
     try {
-      const grid = await generateStoryboardGrid(state.combinedImage, options.neonText);
+      const grid = await generateStoryboardGrid(state.combinedImage, options.neonText, setRetryMsg);
       setState(prev => ({ ...prev, storyboardGrid: grid }));
       setStep(AppStep.STORYBOARD);
     } catch (err: any) { handleError(err); } finally { setLoadingMsg(''); stopProgress(); }
@@ -150,13 +154,14 @@ const App: React.FC = () => {
     for (let i = 0; i < 9; i++) {
       setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: true } : s) }));
       try {
-        const img = await extractCell(state.storyboardGrid!, i);
+        const img = await extractCell(state.storyboardGrid!, i, (msg) => setRetryMsg(`Frame ${i+1}: ${msg}`));
         setState(prev => ({
           ...prev,
           scenes: prev.scenes.map(s => s.id === i ? { ...s, image: img, isExtracting: false } : s),
           extractionProgress: Math.round(((i + 1) / 9) * 100)
         }));
-        if (i < 8) await new Promise(r => setTimeout(r, 8000));
+        setRetryMsg('');
+        if (i < 8) await new Promise(r => setTimeout(r, 5000));
       } catch (err: any) {
         handleError(err);
         setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: false } : s) }));
@@ -225,14 +230,15 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 relative overflow-y-auto p-6 sm:p-14 min-w-0 bg-[#0a0a0b] h-screen">
-        {loadingMsg && (
+        {(loadingMsg || retryMsg) && (
           <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/98 backdrop-blur-2xl px-6">
             <div className="relative w-24 h-24 mb-10">
               <div className="absolute inset-0 border-4 border-blue-500/10 rounded-full"></div>
               <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
               <div className="absolute inset-0 flex items-center justify-center font-black text-xl text-blue-400">{Math.floor(loadingProgress)}%</div>
             </div>
-            <p className="text-2xl font-black gradient-text uppercase tracking-tighter mb-4 text-center">{loadingMsg}</p>
+            <p className="text-2xl font-black gradient-text uppercase tracking-tighter mb-4 text-center">{loadingMsg || 'Sabar dulu bos...'}</p>
+            {retryMsg && <p className="text-blue-400/80 text-[11px] font-black uppercase tracking-[0.2em] animate-pulse bg-blue-500/5 px-6 py-2 rounded-full border border-blue-500/10">{retryMsg}</p>}
           </div>
         )}
 
