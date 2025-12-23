@@ -1,0 +1,7 @@
+{
+  "name": "AI Image Storyboard Pro",
+  "description": "Professional tool for creating and extracting 3x3 image storyboards from model and product photos with advanced AI editing.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
