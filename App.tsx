@@ -6,22 +6,13 @@ import {
   refineAndCustomize, 
   generateStoryboardGrid, 
   extractCell,
-  generateSceneVideo,
-  upscaleScene
+  generateSceneVideo
 } from './services/geminiService.ts';
 
-declare global {
-  interface Window {
-    aistudio: {
-      hasSelectedApiKey: () => Promise<boolean>;
-      openSelectKey: () => Promise<void>;
-    };
-  }
-}
-
 const App: React.FC = () => {
-  // Fixed: State for locking the app until an API key is selected using the mandatory selection flow.
+  // State untuk manajemen API Key user
   const [isActivated, setIsActivated] = useState<boolean>(false);
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
   
   const [step, setStep] = useState<AppStep>(AppStep.UPLOAD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -57,20 +48,34 @@ const App: React.FC = () => {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const progressIntervalRef = useRef<number | null>(null);
 
-  // Fixed: Check if an API key has already been selected on mount.
+  // Cek key di awal
   useEffect(() => {
-    const checkKey = async () => {
-      try {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (hasKey) {
-          setIsActivated(true);
-        }
-      } catch (e) {
-        console.error("Error checking API key status", e);
-      }
-    };
-    checkKey();
+    const savedKey = sessionStorage.getItem('user_api_key');
+    if (savedKey) {
+      (process.env as any).API_KEY = savedKey;
+      setIsActivated(true);
+    }
   }, []);
+
+  const handleActivate = () => {
+    const trimmedKey = apiKeyInput.trim();
+    if (!trimmedKey || trimmedKey.length < 10) {
+      setError("Masukkan API Key yang valid.");
+      return;
+    }
+    // Set ke environment variable agar digunakan SDK
+    (process.env as any).API_KEY = trimmedKey;
+    sessionStorage.setItem('user_api_key', trimmedKey);
+    setIsActivated(true);
+    setError(null);
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('user_api_key');
+    (process.env as any).API_KEY = "";
+    setIsActivated(false);
+    setApiKeyInput("");
+  };
 
   const startProgress = () => {
     setLoadingProgress(0);
@@ -91,23 +96,6 @@ const App: React.FC = () => {
     setTimeout(() => setLoadingProgress(0), 500);
   };
 
-  // Fixed: handleActivate now uses the mandatory selection dialog.
-  const handleActivate = async () => {
-    try {
-      await window.aistudio.openSelectKey();
-      // Assume the key selection was successful after triggering openSelectKey() and proceed to the app.
-      setIsActivated(true);
-      setError(null);
-    } catch (err) {
-      setError("Gagal membuka pemilihan API Key.");
-    }
-  };
-
-  const handleLogoutKey = async () => {
-    await window.aistudio.openSelectKey();
-    setIsActivated(true);
-  };
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'model' | 'product') => {
     const file = e.target.files?.[0];
     if (file) {
@@ -120,15 +108,13 @@ const App: React.FC = () => {
     }
   };
 
-  // Fixed: Enhanced error handling to reset key selection if "Requested entity was not found" occurs.
-  const handleApiError = async (err: any) => {
-    const errMsg = err.message || "Terjadi kesalahan API.";
-    if (errMsg.includes("Requested entity was not found")) {
-      setError("Project atau API Key tidak ditemukan. Silakan pilih ulang.");
-      await window.aistudio.openSelectKey();
-      setIsActivated(true);
+  const handleError = (err: any) => {
+    const msg = err.message || "Terjadi kesalahan.";
+    if (msg.includes("401") || msg.includes("Requested entity was not found") || msg.includes("API_KEY_INVALID")) {
+      setError("API Key tidak valid atau salah. Silakan masukkan ulang.");
+      handleLogout();
     } else {
-      setError(errMsg);
+      setError(msg);
     }
   };
 
@@ -139,10 +125,9 @@ const App: React.FC = () => {
     try {
       const combined = await generateCombinedImage(state.modelImage, state.productImage);
       setState(prev => ({ ...prev, combinedImage: combined }));
-      setStep(AppStep.UPLOAD); // Resetting back if needed, but App.tsx original logic went to AppStep.REFINE
       setStep(AppStep.REFINE);
     } catch (err: any) {
-      await handleApiError(err);
+      handleError(err);
     } finally {
       setLoadingMsg('');
       stopProgress();
@@ -156,9 +141,7 @@ const App: React.FC = () => {
     try {
       const refined = await refineAndCustomize(state.combinedImage, options.background, options.backgroundRef, options.lightingRef, options.neonText, options.fontStyle);
       setState(prev => ({ ...prev, combinedImage: refined }));
-    } catch (err: any) { 
-      await handleApiError(err);
-    }
+    } catch (err: any) { handleError(err); }
     finally { setLoadingMsg(''); stopProgress(); }
   };
 
@@ -170,9 +153,7 @@ const App: React.FC = () => {
       const grid = await generateStoryboardGrid(state.combinedImage, options.neonText);
       setState(prev => ({ ...prev, storyboardGrid: grid }));
       setStep(AppStep.STORYBOARD);
-    } catch (err: any) { 
-      await handleApiError(err);
-    }
+    } catch (err: any) { handleError(err); }
     finally { setLoadingMsg(''); stopProgress(); }
   };
 
@@ -189,8 +170,8 @@ const App: React.FC = () => {
         }));
         if (i < 8) await new Promise(r => setTimeout(r, 10000));
       } catch (err: any) {
+        handleError(err);
         setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: false } : s) }));
-        await handleApiError(err);
       }
     }
   };
@@ -203,12 +184,12 @@ const App: React.FC = () => {
       const videoUrl = await generateSceneVideo(scene.image, scenePrompts[id]);
       setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, videoUrl, isGeneratingVideo: false } : s)}));
     } catch (err: any) {
+      handleError(err);
       setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, isGeneratingVideo: false } : s)}));
-      await handleApiError(err);
     }
   };
 
-  // Fixed: Gateway screen now correctly prompts for API Key selection via the mandatory dialog.
+  // TAMPILAN 1: GERBANG AKTIVASI
   if (!isActivated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#080809] p-6 relative">
@@ -218,21 +199,32 @@ const App: React.FC = () => {
             <i className="fa-solid fa-key text-3xl text-white"></i>
           </div>
           <h1 className="text-3xl font-black mb-3 tracking-tighter uppercase leading-none">Aktivasi Alat</h1>
-          <p className="text-zinc-500 text-sm mb-10 font-medium">Alat ini memerlukan API Key dari project Google Cloud berbayar untuk fitur Video & Image High-Res.</p>
+          <p className="text-zinc-500 text-sm mb-10 font-medium leading-relaxed">Masukkan Google Gemini API Key Anda untuk mulai memproduksi konten Affiliate AI.</p>
           
-          <div className="space-y-6">
+          <div className="space-y-6 text-left">
+            <div>
+              <label className="block text-[10px] font-black text-blue-500 uppercase tracking-widest mb-3 ml-1">Masukan API Key Anda</label>
+              <input 
+                type="password"
+                placeholder="AIzaSy..."
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                className="w-full bg-black/40 border border-white/10 rounded-2xl py-5 px-6 text-sm font-mono focus:ring-2 focus:ring-blue-500/50 outline-none transition-all placeholder:text-zinc-700"
+              />
+            </div>
+
+            {error && <div className="text-red-400 text-[10px] font-black uppercase tracking-widest animate-pulse text-center">{error}</div>}
+
             <button 
               onClick={handleActivate}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-6 rounded-2xl transition-all shadow-xl active:scale-95 uppercase tracking-widest text-xs flex items-center justify-center gap-3"
             >
-              PILIH API KEY GEMINI
+              AKTIFKAN & MULAI
             </button>
 
-            {error && <div className="text-red-400 text-[10px] font-black uppercase tracking-widest animate-pulse">{error}</div>}
-
-            <div className="pt-6 border-t border-white/5">
-              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-zinc-600 hover:text-blue-400 text-[10px] font-bold uppercase tracking-widest transition-colors">
-                PELAJARI TENTANG BILLING <i className="fa-solid fa-external-link ml-1"></i>
+            <div className="pt-6 border-t border-white/5 text-center">
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-zinc-600 hover:text-blue-400 text-[10px] font-bold uppercase tracking-widest transition-colors">
+                DAPATKAN KEY DI GOOGLE AI STUDIO <i className="fa-solid fa-external-link ml-1"></i>
               </a>
             </div>
           </div>
@@ -241,7 +233,7 @@ const App: React.FC = () => {
     );
   }
 
-  // TAMPILAN UTAMA APLIKASI
+  // TAMPILAN 2: APLIKASI UTAMA
   const steps = [
     { id: AppStep.UPLOAD, label: 'Upload Assets', icon: 'fa-cloud-arrow-up', isUnlocked: true },
     { id: AppStep.REFINE, label: 'Refine & Text', icon: 'fa-wand-magic-sparkles', isUnlocked: !!state.combinedImage },
@@ -252,7 +244,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex bg-[#0a0a0b] text-zinc-100 relative overflow-hidden">
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-[#0f0f11]/95 backdrop-blur-2xl border-r border-white/5 transition-transform lg:translate-x-0 lg:static flex-shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-[#0f0f11]/95 backdrop-blur-2xl border-r border-white/5 transition-transform lg:translate-x-0 lg:static flex-shrink-0 ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
         <div className="p-8 h-full flex flex-col">
           <div className="flex items-center gap-4 mb-16">
             <div className="w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/20">
@@ -271,17 +263,21 @@ const App: React.FC = () => {
           </nav>
 
           <div className="pt-8 border-t border-white/5 space-y-4">
-             <div className="px-4 py-3 bg-white/5 rounded-xl border border-white/5">
+             <div className="px-4 py-3 bg-white/5 rounded-xl border border-white/5 overflow-hidden">
                 <p className="text-[8px] font-black text-zinc-600 uppercase tracking-widest mb-1">Status Lisensi</p>
-                <p className="text-[10px] font-bold text-emerald-500 truncate">Aktif</p>
+                <p className="text-[10px] font-bold text-emerald-500 truncate">{sessionStorage.getItem('user_api_key')?.substring(0, 15)}...</p>
              </div>
-             <button onClick={handleLogoutKey} className="w-full py-4 text-[10px] font-black text-blue-400 uppercase tracking-widest hover:bg-blue-500/10 rounded-xl transition-all">Ganti API Key</button>
+             <button onClick={handleLogout} className="w-full py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest hover:bg-red-500/10 hover:text-red-400 rounded-xl transition-all">Ganti API Key</button>
           </div>
         </div>
       </aside>
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <main className="flex-1 relative overflow-y-auto p-6 sm:p-14 min-w-0 bg-[#0a0a0b] h-screen">
+        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="lg:hidden fixed bottom-6 right-6 z-[60] w-14 h-14 bg-blue-600 shadow-2xl rounded-full flex items-center justify-center border border-white/20">
+          <i className={`fa-solid ${isSidebarOpen ? 'fa-xmark' : 'fa-bars'} text-xl text-white`}></i>
+        </button>
+
         {loadingMsg && (
           <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/98 backdrop-blur-2xl px-6 text-center">
             <div className="relative w-24 h-24 mb-10">
@@ -301,9 +297,9 @@ const App: React.FC = () => {
 
           {step === AppStep.UPLOAD && (
             <div className="grid lg:grid-cols-2 gap-8 animate-up">
-              {[ {t: 'Subject Model', d: 'model', i: 'fa-user-tie', c: 'blue'}, {t: 'Product Asset', d: 'product', i: 'fa-shirt', c: 'emerald'} ].map((u) => (
+              {[ {t: 'Subject Model', d: 'model', i: 'fa-user-tie'}, {t: 'Product Asset', d: 'product', i: 'fa-shirt'} ].map((u) => (
                 <div key={u.d} className="glass p-10 rounded-[2.5rem] flex flex-col items-center text-center">
-                  <div className={`w-14 h-14 bg-${u.c}-500/10 text-${u.c}-400 rounded-2xl flex items-center justify-center mb-6 border border-${u.c}-500/10`}><i className={`fa-solid ${u.i} text-2xl`}></i></div>
+                  <div className={`w-14 h-14 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center mb-6 border border-white/5`}><i className={`fa-solid ${u.i} text-2xl`}></i></div>
                   <h3 className="text-xl font-black mb-8 uppercase tracking-tighter">{u.t}</h3>
                   <label className="w-full h-96 border-2 border-dashed border-zinc-800 hover:border-blue-500/50 rounded-[2rem] flex flex-col items-center justify-center transition-all cursor-pointer overflow-hidden relative group">
                     {(state as any)[`${u.d}Image`] ? <img src={(state as any)[`${u.d}Image`]} className="w-full h-full object-contain p-6" alt={u.t} /> : <div className="flex flex-col items-center opacity-40 group-hover:opacity-100 transition-opacity"><i className="fa-solid fa-plus text-3xl mb-4"></i><span className="text-[10px] font-black uppercase tracking-widest">Klik untuk Pilih File</span></div>}
@@ -361,7 +357,7 @@ const App: React.FC = () => {
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {state.scenes.map((scene, idx) => (
                   <div key={scene.id} className="glass p-6 rounded-[2.5rem] flex flex-col h-full group">
-                    <div className="aspect-[9/16] bg-black/40 rounded-[2rem] overflow-hidden relative mb-8 border border-white/5">
+                    <div className="aspect-[9/16] bg-black/40 rounded-[2rem] overflow-hidden relative mb-8 border border-white/5 shadow-inner">
                       {scene.image ? (
                         <>
                           {scene.videoUrl ? <video src={scene.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline /> : <img src={scene.image} className="w-full h-full object-cover" alt={`Frame ${idx+1}`} />}
@@ -377,7 +373,7 @@ const App: React.FC = () => {
                     </div>
                     {scene.image && !scene.videoUrl && (
                       <div className="mt-auto space-y-4">
-                        <textarea placeholder="Gerakan: Cinematic flow..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/20 border border-white/5 rounded-xl p-4 text-[10px] h-16 resize-none outline-none focus:ring-1 focus:ring-blue-500/30" />
+                        <textarea placeholder="Gerakan: Cinematic flow..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/20 border border-white/5 rounded-xl p-4 text-[10px] h-16 resize-none outline-none focus:ring-1 focus:ring-blue-500/30 font-medium" />
                         <button disabled={scene.isGeneratingVideo} onClick={() => handleGenerateVideo(scene.id)} className="w-full py-4 rounded-xl bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 text-[10px] font-black uppercase tracking-widest transition-all">
                           {scene.isGeneratingVideo ? <i className="fa-solid fa-spinner fa-spin"></i> : <><i className="fa-solid fa-video mr-2"></i> Render Video</>}
                         </button>

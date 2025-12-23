@@ -14,6 +14,7 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 6): Promise<T
     } catch (error: any) {
       lastError = error;
       const errorStr = JSON.stringify(error) || error.message || "";
+      
       if (errorStr.includes("429") || errorStr.includes("RESOURCE_REHAUSTED") || errorStr.includes("quota")) {
         let waitTime = Math.pow(2, attempt) * 20000;
         await sleep(waitTime);
@@ -26,10 +27,13 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 6): Promise<T
 }
 
 /**
- * Inisialisasi SDK selalu menggunakan key terbaru dari environment.
+ * Mendapatkan instance AI baru dengan key terbaru dari environment.
  */
-// Fixed: Use process.env.API_KEY directly as per guidelines.
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getAI = () => {
+  const key = process.env.API_KEY;
+  if (!key) throw new Error("API_KEY_MISSING");
+  return new GoogleGenAI({ apiKey: key });
+};
 
 export const generateCombinedImage = async (modelBase64: string, productBase64: string): Promise<string> => {
   return callWithRetry(async () => {
@@ -123,13 +127,13 @@ export const generateSceneVideo = async (imageBase64: string, motionPrompt: stri
   });
 
   while (!operation.done) {
-    await new Promise(r => setTimeout(r, 10000));
+    await sleep(10000);
     operation = await ai.operations.getVideosOperation({ operation: operation });
   }
 
   const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-  // Fixed: Use process.env.API_KEY directly.
   const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+  if (!response.ok) throw new Error("Gagal mengunduh aset video.");
   const blob = await response.blob();
   return URL.createObjectURL(blob);
 };
