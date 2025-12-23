@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AppStep, GenerationState, CustomizationOptions, SceneFrame } from './types';
+import { AppStep, GenerationState, CustomizationOptions } from './types.ts';
 import { 
   checkApiKey, 
   openApiKeySelector, 
@@ -10,7 +10,7 @@ import {
   extractCell,
   generateSceneVideo,
   upscaleScene
-} from './services/geminiService';
+} from './services/geminiService.ts';
 
 const App: React.FC = () => {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
@@ -34,7 +34,7 @@ const App: React.FC = () => {
     extractionProgress: 0,
   });
 
-  const [scenePrompts, setScenePrompts] = useState<string[]>(Array(9).fill("Subtle cinematic motion, the model moves naturally, elegant flow of the mukena fabric."));
+  const [scenePrompts, setScenePrompts] = useState<string[]>(Array(9).fill("Subtle cinematic motion, the model moves naturally, elegant flow of the fabric."));
   
   const [options, setOptions] = useState<CustomizationOptions>({
     background: 'Luxury minimalist modern prayer room, marble floor, soft sunlight through slats, cinematic lighting',
@@ -80,10 +80,10 @@ const App: React.FC = () => {
   const handleActivateKey = async () => {
     try {
       await openApiKeySelector();
-      // Per instructions: assume success after calling openSelectKey to avoid race conditions.
+      // Mengikuti aturan: asumsikan kunci dipilih untuk menghindari race condition
       setHasApiKey(true);
     } catch (err) {
-      setError("Gagal membuka pemilih kunci API.");
+      setError("Gagal memicu pemilih API Key.");
     }
   };
 
@@ -190,13 +190,12 @@ const App: React.FC = () => {
           extractionProgress: Math.round(((i + 1) / 9) * 100)
         }));
         
-        // Wait between extraction calls to manage rate limits
         if (i < 8) {
           await new Promise(resolve => setTimeout(resolve, 12000));
         }
         
       } catch (err: any) {
-        setError(`Limit tercapai. Sedang mencoba kembali secara otomatis.`);
+        setError(`Limit tercapai. Mencoba kembali secara otomatis.`);
         setState(prev => ({
           ...prev,
           scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: false } : s)
@@ -231,43 +230,37 @@ const App: React.FC = () => {
     }
   };
 
-  // 1. App initialization loading
   if (hasApiKey === null) {
     return (
-      <div className="min-h-screen bg-[#0a0a0b] flex items-center justify-center">
-        <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-[#0a0a0b] flex flex-col items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">Menyiapkan Engine...</p>
       </div>
     );
   }
 
-  // 2. Strict Activation Gate Component
   if (hasApiKey === false) {
     return (
       <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[#080809] p-6">
-        <div className="fixed inset-0 bg-blue-900/10 blur-[100px] pointer-events-none"></div>
-        <div className="max-w-md w-full glass p-10 sm:p-12 rounded-[3rem] border border-blue-500/20 shadow-[0_0_80px_rgba(37,99,235,0.15)] text-center animate-up relative z-10">
-          <div className="w-24 h-24 bg-gradient-to-tr from-blue-600 to-cyan-400 rounded-3xl mx-auto flex items-center justify-center mb-10 rotate-3 shadow-[0_0_40px_rgba(37,99,235,0.4)] animate-pulse">
-            <i className="fa-solid fa-shield-halved text-4xl text-white"></i>
+        <div className="fixed inset-0 bg-blue-900/5 blur-[120px] pointer-events-none"></div>
+        <div className="max-w-md w-full glass p-12 rounded-[3rem] border border-blue-500/20 shadow-2xl text-center animate-up relative z-10">
+          <div className="w-24 h-24 bg-gradient-to-tr from-blue-600 to-cyan-400 rounded-3xl mx-auto flex items-center justify-center mb-10 rotate-3 shadow-xl">
+            <i className="fa-solid fa-lock text-4xl text-white"></i>
           </div>
-          <h1 className="text-3xl font-black mb-6 gradient-text tracking-tighter uppercase leading-none">Alat Terkunci</h1>
-          <p className="text-zinc-400 mb-10 text-sm sm:text-base leading-relaxed font-medium">
-            Selamat datang di <b>Multishot Affiliate AI</b>. Untuk memulai, Anda harus mengaktifkan alat ini menggunakan <b>Gemini API Key</b> Anda.
+          <h1 className="text-3xl font-black mb-6 gradient-text tracking-tighter uppercase leading-none">Aktivasi Alat</h1>
+          <p className="text-zinc-400 mb-10 text-sm font-medium leading-relaxed">
+            Multishot Affiliate AI membutuhkan <b>Gemini API Key</b> pribadi Anda untuk menjalankan fitur video dan gambar 2K.
           </p>
           <div className="space-y-6">
             <button
               onClick={handleActivateKey}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-6 rounded-2xl transition-all shadow-xl active:scale-95 uppercase tracking-widest text-sm shadow-blue-500/20 flex items-center justify-center gap-3"
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-6 rounded-2xl transition-all shadow-xl active:scale-95 uppercase tracking-widest text-sm flex items-center justify-center gap-3"
             >
-              <i className="fa-solid fa-key"></i> AKTIFKAN SEKARANG
+              <i className="fa-solid fa-key"></i> AKTIFKAN & MULAI
             </button>
             <div className="pt-6 border-t border-white/5">
-              <a 
-                href="https://ai.google.dev/gemini-api/docs/billing" 
-                target="_blank" 
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 text-[10px] text-zinc-500 hover:text-blue-400 transition-colors font-bold uppercase tracking-widest"
-              >
-                CARA MENDAPATKAN API KEY <i className="fa-solid fa-external-link"></i>
+              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-zinc-500 hover:text-blue-400 transition-colors font-bold uppercase tracking-widest text-[10px]">
+                Panduan Mendapatkan API KEY <i className="fa-solid fa-external-link ml-1"></i>
               </a>
             </div>
           </div>
@@ -276,7 +269,6 @@ const App: React.FC = () => {
     );
   }
 
-  // 3. Navigation Unlocking Logic
   const steps = [
     { id: AppStep.UPLOAD, label: 'Upload Assets', icon: 'fa-cloud-arrow-up', isUnlocked: true },
     { id: AppStep.REFINE, label: 'Refine & Text', icon: 'fa-wand-magic-sparkles', isUnlocked: !!state.combinedImage },
@@ -287,12 +279,12 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex bg-[#0a0a0b] text-zinc-100 relative overflow-hidden">
       <aside className={`
-        fixed inset-y-0 left-0 z-50 w-72 sm:w-80 bg-[#0f0f11]/95 backdrop-blur-2xl border-r border-white/5 transition-transform duration-300 lg:translate-x-0 lg:static flex-shrink-0
-        ${isSidebarOpen ? 'translate-x-0 shadow-2xl shadow-black' : '-translate-x-full'}
+        fixed inset-y-0 left-0 z-50 w-80 bg-[#0f0f11]/95 backdrop-blur-2xl border-r border-white/5 transition-transform duration-300 lg:translate-x-0 lg:static flex-shrink-0
+        ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}
       `}>
         <div className="p-8 h-full flex flex-col overflow-y-auto">
           <div className="flex items-center gap-4 mb-16">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl flex items-center justify-center shadow-lg">
               <i className="fa-solid fa-bolt text-white text-xl"></i>
             </div>
             <span className="text-xl font-black tracking-tighter uppercase leading-tight">Multishot <br/><span className="text-blue-500">Affiliate AI</span></span>
@@ -301,55 +293,37 @@ const App: React.FC = () => {
           <nav className="space-y-4 flex-1">
             {steps.map((s) => {
               const isActive = step === s.id;
-              const isPast = steps.findIndex(x => x.id === step) > steps.findIndex(x => x.id === s.id);
               const canClick = s.isUnlocked;
-
               return (
                 <button
                   key={s.id}
                   disabled={!canClick}
-                  onClick={() => {
-                    if (canClick) {
-                      setStep(s.id);
-                      setIsSidebarOpen(false);
-                    }
-                  }}
+                  onClick={() => canClick && setStep(s.id)}
                   className={`
                     w-full flex items-center gap-5 px-6 py-5 rounded-2xl transition-all group border text-left relative
                     ${isActive ? 'bg-blue-600/15 text-blue-400 border-blue-500/30' : 'text-zinc-500 hover:text-zinc-200 border-transparent'}
-                    ${!canClick ? 'opacity-30 grayscale cursor-not-allowed bg-black/10' : 'hover:bg-white/5 cursor-pointer'}
+                    ${!canClick ? 'opacity-30 cursor-not-allowed bg-black/10' : 'hover:bg-white/5 cursor-pointer'}
                   `}
                 >
                   <div className={`
                     w-11 h-11 rounded-xl flex items-center justify-center transition-all flex-shrink-0
-                    ${isActive ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/30' : 'bg-zinc-800 group-hover:bg-zinc-700'}
+                    ${isActive ? 'bg-blue-600 text-white shadow-xl' : 'bg-zinc-800'}
                   `}>
                     <i className={`fa-solid ${canClick ? s.icon : 'fa-lock'} text-base`}></i>
                   </div>
                   <div className="flex flex-col">
                     <span className="font-bold text-sm leading-none">{s.label}</span>
-                    {!canClick && <span className="text-[9px] uppercase tracking-widest mt-1 text-zinc-600 font-black italic">Locked</span>}
+                    {!canClick && <span className="text-[9px] uppercase tracking-widest mt-1 text-zinc-600 font-black">TERKUNCI</span>}
                   </div>
-                  {isPast && canClick && <i className="fa-solid fa-circle-check ml-auto text-emerald-500 text-sm"></i>}
                 </button>
               );
             })}
           </nav>
-          
-          <div className="pt-8 mt-auto border-t border-white/5">
-             <div className="flex items-center gap-3 px-2">
-                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">API ACTIVE</span>
-             </div>
-          </div>
         </div>
       </aside>
 
-      <main className="flex-1 relative overflow-y-auto p-6 sm:p-14 scroll-smooth min-w-0 bg-[#0a0a0b] h-screen">
-        <button 
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="lg:hidden fixed bottom-6 right-6 z-[60] w-14 h-14 bg-blue-600 shadow-2xl rounded-full flex items-center justify-center border border-white/20 active:scale-90"
-        >
+      <main className="flex-1 relative overflow-y-auto p-6 sm:p-14 min-w-0 bg-[#0a0a0b] h-screen">
+        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="lg:hidden fixed bottom-6 right-6 z-[60] w-14 h-14 bg-blue-600 shadow-2xl rounded-full flex items-center justify-center border border-white/20">
           <i className={`fa-solid ${isSidebarOpen ? 'fa-xmark' : 'fa-bars'} text-xl text-white`}></i>
         </button>
 
@@ -358,11 +332,9 @@ const App: React.FC = () => {
             <div className="relative w-28 h-28 mb-12">
               <div className="absolute inset-0 border-4 border-blue-500/10 rounded-full"></div>
               <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <div className="absolute inset-0 flex items-center justify-center font-black text-2xl text-blue-400">
-                {Math.floor(loadingProgress)}%
-              </div>
+              <div className="absolute inset-0 flex items-center justify-center font-black text-2xl text-blue-400">{Math.floor(loadingProgress)}%</div>
             </div>
-            <p className="text-3xl font-black gradient-text animate-pulse mb-6 tracking-tight uppercase leading-none">{loadingMsg}</p>
+            <p className="text-3xl font-black gradient-text animate-pulse mb-6 uppercase tracking-tight">{loadingMsg}</p>
             <div className="w-full max-w-md h-2 bg-zinc-900 rounded-full overflow-hidden border border-white/5 shadow-inner">
               <div className="h-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-300" style={{ width: `${loadingProgress}%` }}></div>
             </div>
@@ -474,7 +446,6 @@ const App: React.FC = () => {
                       value={options.background}
                       onChange={(e) => setOptions(o => ({...o, background: e.target.value}))}
                       className="w-full bg-black/60 border border-white/10 rounded-xl p-6 focus:ring-2 focus:ring-blue-500 outline-none text-zinc-100 h-40 resize-none text-sm font-medium leading-relaxed"
-                      placeholder="Contoh: Kamar tidur mewah minimalis, sinar matahari lembut..."
                     />
                     <div className="mt-6 grid grid-cols-2 gap-4">
                       <div>
@@ -517,10 +488,7 @@ const App: React.FC = () => {
               <div className="w-full glass p-6 rounded-[2.5rem] border border-white/10 shadow-2xl mb-14">
                 <img src={state.storyboardGrid} className="w-full rounded-2xl aspect-[9/16] object-contain shadow-2xl" alt="Storyboard Grid" />
               </div>
-              <button 
-                onClick={startExtraction} 
-                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 px-24 py-10 rounded-[3rem] font-black text-2xl uppercase tracking-[0.3em] shadow-2xl active:scale-95 leading-none"
-              >
+              <button onClick={startExtraction} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 px-24 py-10 rounded-[3rem] font-black text-2xl uppercase tracking-[0.3em] shadow-2xl active:scale-95 leading-none">
                 EKSTRAK POSISI 1-9
               </button>
             </div>
@@ -542,12 +510,12 @@ const App: React.FC = () => {
                 <div className="flex flex-col sm:flex-row justify-between items-end gap-6 px-6">
                   <div>
                     <h2 className="text-4xl font-black tracking-tighter mb-2">Assets Selesai</h2>
-                    <p className="text-zinc-500 font-black uppercase tracking-[0.3em] text-[10px]">Tinggal Download / Animasikan</p>
+                    <p className="text-zinc-500 font-black uppercase tracking-[0.3em] text-[10px]">Ready for Animation</p>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] font-black text-blue-400 tracking-widest uppercase mb-3 block">Extracting Progress</span>
+                    <span className="text-[10px] font-black text-blue-400 tracking-widest uppercase mb-3 block">Extraction Progress</span>
                     <div className="w-64 h-2.5 bg-zinc-900 rounded-full overflow-hidden border border-white/5 shadow-inner">
-                      <div className="h-full bg-gradient-to-r from-blue-600 to-indigo-500 transition-all duration-700 shadow-[0_0_15px_rgba(59,130,246,0.5)]" style={{ width: `${state.extractionProgress}%` }}></div>
+                      <div className="h-full bg-gradient-to-r from-blue-600 to-indigo-500 transition-all duration-700" style={{ width: `${state.extractionProgress}%` }}></div>
                     </div>
                   </div>
                 </div>
@@ -563,15 +531,10 @@ const App: React.FC = () => {
                             ) : (
                               <img src={scene.image} className="w-full h-full object-cover" alt={`Frame ${idx+1}`} />
                             )}
-                            <div className="absolute top-5 right-5 z-20 flex flex-col gap-4 opacity-0 group-hover/card:opacity-100 transition-all transform translate-y-2 group-hover/card:translate-y-0">
-                              <a href={scene.videoUrl || scene.image} download className="w-11 h-11 bg-white text-black rounded-2xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all scale-90 hover:scale-100">
+                            <div className="absolute top-5 right-5 z-20 flex flex-col gap-4 opacity-0 group-hover/card:opacity-100 transition-all">
+                              <a href={scene.videoUrl || scene.image} download className="w-11 h-11 bg-white text-black rounded-2xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all">
                                 <i className="fa-solid fa-download text-lg"></i>
                               </a>
-                              {!scene.videoUrl && (
-                                <button onClick={(e) => { e.stopPropagation(); handleUpscale(scene.id); }} disabled={scene.isUpscaling} className="w-11 h-11 bg-zinc-900 text-blue-400 rounded-2xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all border border-blue-500/20">
-                                  {scene.isUpscaling ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>}
-                                </button>
-                              )}
                             </div>
                           </>
                         ) : (
@@ -579,7 +542,7 @@ const App: React.FC = () => {
                             {scene.isExtracting ? (
                               <div className="flex flex-col items-center">
                                 <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                                <span className="text-[10px] font-black uppercase text-zinc-600 tracking-widest animate-pulse">Parsing Scene...</span>
+                                <span className="text-[10px] font-black uppercase text-zinc-600 tracking-widest">Processing...</span>
                               </div>
                             ) : <i className="fa-solid fa-lock text-3xl text-zinc-900 opacity-20"></i>}
                           </div>
@@ -587,15 +550,11 @@ const App: React.FC = () => {
                       </div>
 
                       <div className="mt-auto px-2 pb-2">
-                        <div className="mb-8">
-                          <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] mb-2 flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span> SCENE 0{idx+1}
-                          </p>
-                          <p className="text-lg font-black tracking-tight">{scene.image ? 'Ready for Export' : 'In Production Queue'}</p>
-                        </div>
-
+                        <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] mb-2 flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span> SCENE 0{idx+1}
+                        </p>
                         {scene.image && !scene.videoUrl && (
-                          <div className="space-y-5 animate-up">
+                          <div className="space-y-5">
                             <textarea
                               placeholder="Ketik instruksi gerakan..."
                               value={scenePrompts[idx]}
@@ -604,14 +563,14 @@ const App: React.FC = () => {
                                 newPrompts[idx] = e.target.value;
                                 setScenePrompts(newPrompts);
                               }}
-                              className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-xs focus:ring-1 focus:ring-blue-500 outline-none h-20 resize-none font-medium text-zinc-400 shadow-inner"
+                              className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-xs focus:ring-1 focus:ring-blue-500 outline-none h-20 resize-none font-medium text-zinc-400"
                             />
                             <button 
                               onClick={() => handleGenerateVideo(scene.id)}
                               disabled={scene.isGeneratingVideo}
-                              className="w-full py-5 rounded-[1.5rem] font-bold text-[11px] uppercase tracking-[0.3em] bg-white/5 border border-white/10 hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-4 text-zinc-400 shadow-lg"
+                              className="w-full py-5 rounded-[1.5rem] font-bold text-[11px] uppercase tracking-[0.3em] bg-white/5 border border-white/10 hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-4 text-zinc-400"
                             >
-                              {scene.isGeneratingVideo ? <><i className="fa-solid fa-spinner fa-spin"></i> Processing Video...</> : <><i className="fa-solid fa-clapperboard"></i> Buat Animasi Video</>}
+                              {scene.isGeneratingVideo ? <><i className="fa-solid fa-spinner fa-spin"></i> Rendering...</> : <><i className="fa-solid fa-clapperboard"></i> Buat Animasi Video</>}
                             </button>
                           </div>
                         )}

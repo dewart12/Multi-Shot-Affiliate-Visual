@@ -38,15 +38,18 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 6): Promise<T
   throw lastError;
 }
 
+/**
+ * Pengecekan API Key yang support Localhost dan AI Studio Picker.
+ */
 export const checkApiKey = async (): Promise<boolean> => {
   try {
-    // For local development or cases where API_KEY is already injected
+    // 1. Cek variabel lingkungan (untuk localhost development)
     if (process.env.API_KEY && process.env.API_KEY !== "") {
       return true;
     }
-    // For hosted environment with aistudio helpers
-    if (typeof window.aistudio?.hasSelectedApiKey === 'function') {
-      return await window.aistudio.hasSelectedApiKey();
+    // 2. Cek platform helper (untuk AI Studio sandbox)
+    if (typeof (window as any).aistudio?.hasSelectedApiKey === 'function') {
+      return await (window as any).aistudio.hasSelectedApiKey();
     }
     return false;
   } catch (e) {
@@ -54,9 +57,15 @@ export const checkApiKey = async (): Promise<boolean> => {
   }
 };
 
+/**
+ * Memicu dialog pemilihan kunci dari platform.
+ */
 export const openApiKeySelector = async () => {
-  if (typeof window.aistudio?.openSelectKey === 'function') {
-    await window.aistudio.openSelectKey();
+  if (typeof (window as any).aistudio?.openSelectKey === 'function') {
+    await (window as any).aistudio.openSelectKey();
+  } else {
+    // Jika di localhost dan tidak ada window.aistudio, ingatkan user
+    alert("Di lingkungan Localhost, pastikan variabel lingkungan API_KEY sudah diset.");
   }
 };
 
@@ -69,7 +78,7 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
         parts: [
           { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } },
           { inlineData: { data: productBase64.split(',')[1], mimeType: 'image/png' } },
-          { text: "DIGITAL COMPOSITING: Fit the Mukena garment onto the model. Maintain 100% identity and anatomy. Vertical 9:16 format." }
+          { text: "DIGITAL COMPOSITING: Fit the garment onto the model naturally. Maintain 100% identity and anatomy. Vertical 9:16 format." }
         ]
       },
       config: {
@@ -80,7 +89,7 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Failed to generate base image");
+    throw new Error("Gagal menggabungkan aset.");
   });
 };
 
@@ -108,7 +117,7 @@ export const refineAndCustomize = async (image: string, background: string, back
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Failed to refine image");
+    throw new Error("Gagal menyempurnakan gambar.");
   });
 };
 
@@ -121,8 +130,8 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
     CONSISTENCY REQUIREMENTS:
     - BACKGROUND/LIGHTING: Keep identical to the reference.
     - BRANDING: The neon sign "${neonText}" must be visible in the background of all 9 frames.
-    - MODEL: Maintain the exact same model identity and Mukena style.
-    - POSES: 9 varied cinematic poses (Front, Profile, Detail, Fabric Flow, Sitting, etc.)
+    - MODEL: Maintain exact same identity and clothing style.
+    - POSES: 9 varied cinematic poses.
     - GRID: Thin, clear lines separating the 9 boxes.
     Output: 2K High Resolution Grid.`;
 
@@ -142,7 +151,7 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Failed to generate storyboard grid");
+    throw new Error("Gagal membuat storyboard grid.");
   });
 };
 
@@ -160,11 +169,10 @@ export const extractCell = async (gridImage: string, index: number): Promise<str
     Focus entirely on that specific individual frame. 
     
     CRITICAL REQUIREMENTS:
-    1. The final output must be a SINGLE vertical 9:16 scene.
-    2. ABSOLUTELY NO grid lines, NO adjacent cells, and NO borders should be visible.
-    3. The subject and background from that specific cell must FILL THE ENTIRE 9:16 FRAME.
-    4. Do not return the whole grid. Zoom in perfectly until only one scene is visible.
-    5. Maintain 1K professional quality.`;
+    1. SINGLE vertical 9:16 scene.
+    2. ABSOLUTELY NO grid lines.
+    3. FILL THE ENTIRE 9:16 FRAME.
+    4. Maintain 1K professional quality.`;
 
     const response = await ai.models.generateContent({
       model: PRO_MODEL,
@@ -182,7 +190,7 @@ export const extractCell = async (gridImage: string, index: number): Promise<str
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error(`Failed to extract cell`);
+    throw new Error(`Gagal mengekstrak cell.`);
   });
 };
 
@@ -194,7 +202,7 @@ export const upscaleScene = async (imageBase64: string): Promise<string> => {
       contents: {
         parts: [
           { inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } },
-          { text: "UPSCALE 2K: Enhance sharpness and textures. Maintain 100% identity. Output 2K 9:16. Ensure the image fills the entire frame with no black borders." }
+          { text: "UPSCALE 2K: Enhance sharpness and textures. Maintain 100% identity. Output 2K 9:16." }
         ]
       },
       config: {
@@ -205,7 +213,7 @@ export const upscaleScene = async (imageBase64: string): Promise<string> => {
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Upscale failed");
+    throw new Error("Upscale gagal.");
   });
 };
 
@@ -227,10 +235,10 @@ export const generateSceneVideo = async (imageBase64: string, motionPrompt: stri
 
   while (!operation.done) {
     await new Promise(resolve => setTimeout(resolve, 5000));
-    operation = await ai.operations.getVideosOperation({ operation });
+    operation = await (ai as any).operations.getVideosOperation({ operation: (operation as any).operation });
   }
 
-  const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+  const downloadLink = (operation as any).response?.generatedVideos?.[0]?.video?.uri;
   if (!downloadLink) throw new Error("Video generation failed");
   
   const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
