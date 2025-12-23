@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multishot Affiliate AI | Premium Storyboard Suite</title>
+    <title>Multishot Affiliate AI | Personal Suite</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -13,41 +13,35 @@
             background-color: #080809;
             color: #f1f1f2;
             font-family: 'Inter', sans-serif;
-            -webkit-font-smoothing: antialiased;
-            font-size: 16px; 
             margin: 0;
             padding: 0;
         }
         .glass {
-            background: rgba(255, 255, 255, 0.015);
-            backdrop-filter: blur(60px) saturate(180%);
-            -webkit-backdrop-filter: blur(60px) saturate(180%);
+            background: rgba(255, 255, 255, 0.01);
+            backdrop-filter: blur(40px);
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
         .gradient-text {
-            background: linear-gradient(135deg, #ffffff 0%, #60a5fa 60%, #3b82f6 100%);
+            background: linear-gradient(135deg, #ffffff 0%, #3b82f6 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            font-weight: 900;
         }
-        @keyframes fade-in-up {
-            from { opacity: 0; transform: translateY(30px); }
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
         }
         .animate-up {
-            animation: fade-in-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-        }
-        input::placeholder {
-            color: rgba(255, 255, 255, 0.2);
+            animation: fade-in 0.6s ease-out forwards;
         }
     </style>
     <script>
-        // Inisialisasi shim process.env
-        window.process = window.process || {};
-        window.process.env = window.process.env || {};
-        // Cek jika ada key tersimpan di session sebelumnya
-        const savedKey = sessionStorage.getItem('gemini_api_key');
-        window.process.env.API_KEY = savedKey || "";
+        // Inisialisasi shim process.env kosong. 
+        // Wajib diisi lewat UI App agar aplikasi bisa berjalan.
+        window.process = {
+            env: {
+                API_KEY: sessionStorage.getItem('user_gemini_key') || ""
+            }
+        };
     </script>
     <script type="importmap">
 {

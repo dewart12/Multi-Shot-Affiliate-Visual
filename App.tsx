@@ -2,8 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppStep, GenerationState, CustomizationOptions } from './types.ts';
 import { 
-  checkApiKey, 
-  openApiKeySelector,
   generateCombinedImage, 
   refineAndCustomize, 
   generateStoryboardGrid, 
@@ -12,8 +10,19 @@ import {
   upscaleScene
 } from './services/geminiService.ts';
 
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
+
 const App: React.FC = () => {
-  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+  // Fixed: State for locking the app until an API key is selected using the mandatory selection flow.
+  const [isActivated, setIsActivated] = useState<boolean>(false);
+  
   const [step, setStep] = useState<AppStep>(AppStep.UPLOAD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -35,7 +44,6 @@ const App: React.FC = () => {
   });
 
   const [scenePrompts, setScenePrompts] = useState<string[]>(Array(9).fill("Subtle cinematic motion, the model moves naturally, elegant flow of the fabric."));
-  
   const [options, setOptions] = useState<CustomizationOptions>({
     background: 'Luxury minimalist modern prayer room, marble floor, soft sunlight through slats, cinematic lighting',
     backgroundRef: 'Minimalist Zen',
@@ -49,13 +57,19 @@ const App: React.FC = () => {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const progressIntervalRef = useRef<number | null>(null);
 
+  // Fixed: Check if an API key has already been selected on mount.
   useEffect(() => {
-    // Fix: Use process.env.API_KEY implicitly through checkApiKey
-    const init = async () => {
-      const ok = await checkApiKey();
-      setHasApiKey(ok);
+    const checkKey = async () => {
+      try {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        if (hasKey) {
+          setIsActivated(true);
+        }
+      } catch (e) {
+        console.error("Error checking API key status", e);
+      }
     };
-    init();
+    checkKey();
   }, []);
 
   const startProgress = () => {
@@ -63,10 +77,9 @@ const App: React.FC = () => {
     progressIntervalRef.current = window.setInterval(() => {
       setLoadingProgress(prev => {
         if (prev >= 98) return prev;
-        const increment = Math.max(0.1, (100 - prev) / 80);
-        return parseFloat((prev + increment).toFixed(1));
+        return parseFloat((prev + 0.5).toFixed(1));
       });
-    }, 300);
+    }, 200);
   };
 
   const stopProgress = () => {
@@ -78,31 +91,21 @@ const App: React.FC = () => {
     setTimeout(() => setLoadingProgress(0), 500);
   };
 
-  /**
-   * Fix: Implement robust error handling including "Requested entity was not found."
-   */
-  const handleApiError = async (err: any) => {
-    const msg = err.message || JSON.stringify(err) || "Unknown error occurred";
-    setError(msg);
-    
-    if (msg.includes("Requested entity was not found.") || msg.includes("API_KEY") || msg.includes("401") || msg.includes("403")) {
-      setHasApiKey(false);
-      setError("API Key tidak valid, tidak ditemukan, atau butuh pengaturan billing.");
+  // Fixed: handleActivate now uses the mandatory selection dialog.
+  const handleActivate = async () => {
+    try {
+      await window.aistudio.openSelectKey();
+      // Assume the key selection was successful after triggering openSelectKey() and proceed to the app.
+      setIsActivated(true);
+      setError(null);
+    } catch (err) {
+      setError("Gagal membuka pemilihan API Key.");
     }
   };
 
-  /**
-   * Fix: Implement platform-compliant key selection.
-   */
-  const handleSelectApiKey = async () => {
-    try {
-      await openApiKeySelector();
-      // Assume successful selection per guidelines to avoid race condition
-      setHasApiKey(true);
-      setError(null);
-    } catch (err) {
-      console.error("Key selection failed", err);
-    }
+  const handleLogoutKey = async () => {
+    await window.aistudio.openSelectKey();
+    setIsActivated(true);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'model' | 'product') => {
@@ -111,33 +114,32 @@ const App: React.FC = () => {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const base64 = ev.target?.result as string;
-        setState(prev => ({
-          ...prev,
-          [type === 'model' ? 'modelImage' : 'productImage']: base64
-        }));
+        setState(prev => ({ ...prev, [type === 'model' ? 'modelImage' : 'productImage']: base64 }));
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const removeImage = (type: 'model' | 'product') => {
-    setState(prev => ({
-      ...prev,
-      [type === 'model' ? 'modelImage' : 'productImage']: null
-    }));
+  // Fixed: Enhanced error handling to reset key selection if "Requested entity was not found" occurs.
+  const handleApiError = async (err: any) => {
+    const errMsg = err.message || "Terjadi kesalahan API.";
+    if (errMsg.includes("Requested entity was not found")) {
+      setError("Project atau API Key tidak ditemukan. Silakan pilih ulang.");
+      await window.aistudio.openSelectKey();
+      setIsActivated(true);
+    } else {
+      setError(errMsg);
+    }
   };
 
   const startProcessing = async () => {
-    if (!state.modelImage || !state.productImage) {
-      setError("Silakan unggah gambar model dan produk terlebih dahulu.");
-      return;
-    }
-    setError(null);
-    setLoadingMsg("Menganalisis & Menggabungkan Aset...");
+    if (!state.modelImage || !state.productImage) return;
+    setLoadingMsg("Analisis & Penggabungan AI...");
     startProgress();
     try {
       const combined = await generateCombinedImage(state.modelImage, state.productImage);
       setState(prev => ({ ...prev, combinedImage: combined }));
+      setStep(AppStep.UPLOAD); // Resetting back if needed, but App.tsx original logic went to AppStep.REFINE
       setStep(AppStep.REFINE);
     } catch (err: any) {
       await handleApiError(err);
@@ -149,87 +151,47 @@ const App: React.FC = () => {
 
   const handleRefine = async () => {
     if (!state.combinedImage) return;
-    setLoadingMsg("Merancang Lingkungan...");
+    setLoadingMsg("Membangun Studio...");
     startProgress();
     try {
-      const refined = await refineAndCustomize(
-        state.combinedImage, 
-        options.background, 
-        options.backgroundRef, 
-        options.lightingRef, 
-        options.neonText, 
-        options.fontStyle
-      );
+      const refined = await refineAndCustomize(state.combinedImage, options.background, options.backgroundRef, options.lightingRef, options.neonText, options.fontStyle);
       setState(prev => ({ ...prev, combinedImage: refined }));
-    } catch (err: any) {
+    } catch (err: any) { 
       await handleApiError(err);
-    } finally {
-      setLoadingMsg('');
-      stopProgress();
     }
+    finally { setLoadingMsg(''); stopProgress(); }
   };
 
   const goToStoryboard = async () => {
     if (!state.combinedImage) return;
-    setLoadingMsg("Menghasilkan Grid Storyboard...");
+    setLoadingMsg("Membuat Grid Storyboard...");
     startProgress();
     try {
       const grid = await generateStoryboardGrid(state.combinedImage, options.neonText);
       setState(prev => ({ ...prev, storyboardGrid: grid }));
       setStep(AppStep.STORYBOARD);
-    } catch (err: any) {
+    } catch (err: any) { 
       await handleApiError(err);
-    } finally {
-      setLoadingMsg('');
-      stopProgress();
     }
+    finally { setLoadingMsg(''); stopProgress(); }
   };
 
   const startExtraction = async () => {
-    if (!state.storyboardGrid) return;
     setStep(AppStep.RESULTS);
-    setError(null);
-    setState(prev => ({ ...prev, extractionProgress: 0 }));
-    
     for (let i = 0; i < 9; i++) {
-      setState(prev => ({
-        ...prev,
-        scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: true } : s)
-      }));
-      
+      setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: true } : s) }));
       try {
-        const img = await extractCell(state.storyboardGrid, i);
+        const img = await extractCell(state.storyboardGrid!, i);
         setState(prev => ({
           ...prev,
           scenes: prev.scenes.map(s => s.id === i ? { ...s, image: img, isExtracting: false } : s),
           extractionProgress: Math.round(((i + 1) / 9) * 100)
         }));
-        
-        if (i < 8) {
-          // Extra delay to mitigate concurrent request quota for high-res extraction
-          await new Promise(resolve => setTimeout(resolve, 8000));
-        }
-        
+        if (i < 8) await new Promise(r => setTimeout(r, 10000));
       } catch (err: any) {
+        setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: false } : s) }));
         await handleApiError(err);
-        setState(prev => ({
-          ...prev,
-          scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: false } : s)
-        }));
       }
-    }
-  };
-
-  const handleUpscale = async (id: number) => {
-    const scene = state.scenes[id];
-    if (!scene.image) return;
-    setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, isUpscaling: true } : s)}));
-    try {
-      const upscaled = await upscaleScene(scene.image);
-      setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, image: upscaled, isUpscaling: false } : s)}));
-    } catch (err: any) {
-      await handleApiError(err);
-      setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, isUpscaling: false } : s)}));
     }
   };
 
@@ -241,45 +203,35 @@ const App: React.FC = () => {
       const videoUrl = await generateSceneVideo(scene.image, scenePrompts[id]);
       setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, videoUrl, isGeneratingVideo: false } : s)}));
     } catch (err: any) {
-      await handleApiError(err);
       setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, isGeneratingVideo: false } : s)}));
+      await handleApiError(err);
     }
   };
 
-  if (hasApiKey === null) {
+  // Fixed: Gateway screen now correctly prompts for API Key selection via the mandatory dialog.
+  if (!isActivated) {
     return (
-      <div className="min-h-screen bg-[#0a0a0b] flex flex-col items-center justify-center">
-        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">Membaca Sesi...</p>
-      </div>
-    );
-  }
-
-  if (hasApiKey === false) {
-    return (
-      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[#080809] p-6">
-        <div className="fixed inset-0 bg-blue-900/5 blur-[120px] pointer-events-none"></div>
-        <div className="max-w-md w-full glass p-10 sm:p-14 rounded-[3.5rem] border border-blue-500/20 shadow-2xl text-center animate-up relative z-10">
-          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-cyan-400 rounded-3xl mx-auto flex items-center justify-center mb-10 rotate-3 shadow-xl">
+      <div className="min-h-screen flex items-center justify-center bg-[#080809] p-6 relative">
+        <div className="absolute top-0 left-0 w-full h-full bg-blue-600/5 blur-[150px] pointer-events-none"></div>
+        <div className="max-w-md w-full glass p-10 sm:p-14 rounded-[3rem] border border-blue-500/20 text-center animate-up relative z-10 shadow-2xl">
+          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-cyan-400 rounded-3xl mx-auto flex items-center justify-center mb-8 rotate-6 shadow-xl">
             <i className="fa-solid fa-key text-3xl text-white"></i>
           </div>
-          <h1 className="text-3xl font-black mb-4 gradient-text tracking-tighter uppercase leading-none">Pilih API Key</h1>
-          <p className="text-zinc-400 mb-10 text-sm font-medium leading-relaxed px-2">
-            Silakan pilih <b>Google Gemini API Key</b> dari proyek GCP yang memiliki penagihan aktif (paid project) untuk mengaktifkan fitur AI Storyboard & Video.
-          </p>
+          <h1 className="text-3xl font-black mb-3 tracking-tighter uppercase leading-none">Aktivasi Alat</h1>
+          <p className="text-zinc-500 text-sm mb-10 font-medium">Alat ini memerlukan API Key dari project Google Cloud berbayar untuk fitur Video & Image High-Res.</p>
           
           <div className="space-y-6">
-            {error && <p className="text-red-400 text-xs font-bold uppercase tracking-wider mb-2">{error}</p>}
-
-            <button
-              onClick={handleSelectApiKey}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-6 rounded-2xl transition-all shadow-xl active:scale-95 uppercase tracking-widest text-sm flex items-center justify-center gap-3 shadow-blue-500/20"
+            <button 
+              onClick={handleActivate}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-6 rounded-2xl transition-all shadow-xl active:scale-95 uppercase tracking-widest text-xs flex items-center justify-center gap-3"
             >
-              PILIH & AKTIFKAN API
+              PILIH API KEY GEMINI
             </button>
-            
+
+            {error && <div className="text-red-400 text-[10px] font-black uppercase tracking-widest animate-pulse">{error}</div>}
+
             <div className="pt-6 border-t border-white/5">
-              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-zinc-500 hover:text-blue-400 transition-colors font-bold uppercase tracking-widest text-[10px]">
+              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-zinc-600 hover:text-blue-400 text-[10px] font-bold uppercase tracking-widest transition-colors">
                 PELAJARI TENTANG BILLING <i className="fa-solid fa-external-link ml-1"></i>
               </a>
             </div>
@@ -289,6 +241,7 @@ const App: React.FC = () => {
     );
   }
 
+  // TAMPILAN UTAMA APLIKASI
   const steps = [
     { id: AppStep.UPLOAD, label: 'Upload Assets', icon: 'fa-cloud-arrow-up', isUnlocked: true },
     { id: AppStep.REFINE, label: 'Refine & Text', icon: 'fa-wand-magic-sparkles', isUnlocked: !!state.combinedImage },
@@ -298,315 +251,140 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex bg-[#0a0a0b] text-zinc-100 relative overflow-hidden">
-      <aside className={`
-        fixed inset-y-0 left-0 z-50 w-80 bg-[#0f0f11]/95 backdrop-blur-2xl border-r border-white/5 transition-transform duration-300 lg:translate-x-0 lg:static flex-shrink-0
-        ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}
-      `}>
-        <div className="p-8 h-full flex flex-col overflow-y-auto">
+      {/* Sidebar */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-[#0f0f11]/95 backdrop-blur-2xl border-r border-white/5 transition-transform lg:translate-x-0 lg:static flex-shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-8 h-full flex flex-col">
           <div className="flex items-center gap-4 mb-16">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <i className="fa-solid fa-bolt text-white text-xl"></i>
+            <div className="w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/20">
+              <i className="fa-solid fa-bolt text-white"></i>
             </div>
-            <span className="text-xl font-black tracking-tighter uppercase leading-tight">Multishot <br/><span className="text-blue-500">Affiliate AI</span></span>
+            <span className="text-lg font-black tracking-tighter uppercase leading-tight">Multishot <br/><span className="text-blue-500">Affiliate AI</span></span>
           </div>
 
-          <nav className="space-y-4 flex-1">
-            {steps.map((s) => {
-              const isActive = step === s.id;
-              const canClick = s.isUnlocked;
-              return (
-                <button
-                  key={s.id}
-                  disabled={!canClick}
-                  onClick={() => canClick && setStep(s.id)}
-                  className={`
-                    w-full flex items-center gap-5 px-6 py-5 rounded-2xl transition-all group border text-left relative
-                    ${isActive ? 'bg-blue-600/15 text-blue-400 border-blue-500/30' : 'text-zinc-500 hover:text-zinc-200 border-transparent'}
-                    ${!canClick ? 'opacity-30 cursor-not-allowed bg-black/10' : 'hover:bg-white/5 cursor-pointer'}
-                  `}
-                >
-                  <div className={`
-                    w-11 h-11 rounded-xl flex items-center justify-center transition-all flex-shrink-0
-                    ${isActive ? 'bg-blue-600 text-white shadow-xl' : 'bg-zinc-800'}
-                  `}>
-                    <i className={`fa-solid ${canClick ? s.icon : 'fa-lock'} text-base`}></i>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-bold text-sm leading-none">{s.label}</span>
-                    {!canClick && <span className="text-[9px] uppercase tracking-widest mt-1 text-zinc-600 font-black">TERKUNCI</span>}
-                  </div>
-                </button>
-              );
-            })}
+          <nav className="space-y-3 flex-1">
+            {steps.map((s) => (
+              <button key={s.id} disabled={!s.isUnlocked} onClick={() => setStep(s.id)} className={`w-full flex items-center gap-5 px-6 py-5 rounded-2xl transition-all border text-left ${step === s.id ? 'bg-blue-600/10 text-blue-400 border-blue-500/20' : 'text-zinc-500 border-transparent hover:bg-white/5'} ${!s.isUnlocked ? 'opacity-30 cursor-not-allowed' : ''}`}>
+                <i className={`fa-solid ${s.isUnlocked ? s.icon : 'fa-lock'} text-sm`}></i>
+                <span className="font-bold text-xs uppercase tracking-widest">{s.label}</span>
+              </button>
+            ))}
           </nav>
 
-          <div className="mt-auto pt-8 border-t border-white/5">
-             <button 
-                onClick={handleSelectApiKey} 
-                className="w-full flex items-center justify-center gap-3 py-4 rounded-xl border border-white/5 hover:bg-white/5 transition-all text-xs font-bold text-zinc-500 hover:text-blue-400"
-              >
-                <i className="fa-solid fa-gear"></i> GANTI API KEY
-             </button>
+          <div className="pt-8 border-t border-white/5 space-y-4">
+             <div className="px-4 py-3 bg-white/5 rounded-xl border border-white/5">
+                <p className="text-[8px] font-black text-zinc-600 uppercase tracking-widest mb-1">Status Lisensi</p>
+                <p className="text-[10px] font-bold text-emerald-500 truncate">Aktif</p>
+             </div>
+             <button onClick={handleLogoutKey} className="w-full py-4 text-[10px] font-black text-blue-400 uppercase tracking-widest hover:bg-blue-500/10 rounded-xl transition-all">Ganti API Key</button>
           </div>
         </div>
       </aside>
 
+      {/* Main Content */}
       <main className="flex-1 relative overflow-y-auto p-6 sm:p-14 min-w-0 bg-[#0a0a0b] h-screen">
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="lg:hidden fixed bottom-6 right-6 z-[60] w-14 h-14 bg-blue-600 shadow-2xl rounded-full flex items-center justify-center border border-white/20">
-          <i className={`fa-solid ${isSidebarOpen ? 'fa-xmark' : 'fa-bars'} text-xl text-white`}></i>
-        </button>
-
         {loadingMsg && (
-          <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/95 backdrop-blur-2xl px-6 text-center">
-            <div className="relative w-28 h-28 mb-12">
+          <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/98 backdrop-blur-2xl px-6 text-center">
+            <div className="relative w-24 h-24 mb-10">
               <div className="absolute inset-0 border-4 border-blue-500/10 rounded-full"></div>
               <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <div className="absolute inset-0 flex items-center justify-center font-black text-2xl text-blue-400">{Math.floor(loadingProgress)}%</div>
+              <div className="absolute inset-0 flex items-center justify-center font-black text-xl text-blue-400">{Math.floor(loadingProgress)}%</div>
             </div>
-            <p className="text-3xl font-black gradient-text animate-pulse mb-6 uppercase tracking-tight">{loadingMsg}</p>
-            <div className="w-full max-w-md h-2 bg-zinc-900 rounded-full overflow-hidden border border-white/5 shadow-inner">
-              <div className="h-full bg-gradient-to-r from-blue-600 to-cyan-500 transition-all duration-300" style={{ width: `${loadingProgress}%` }}></div>
-            </div>
-          </div>
-        )}
-
-        {previewImage && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/98 backdrop-blur-3xl p-8" onClick={() => setPreviewImage(null)}>
-            <div className="relative w-full h-full flex items-center justify-center" onClick={e => e.stopPropagation()}>
-              <img src={previewImage} className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" alt="Preview" />
-              <button onClick={() => setPreviewImage(null)} className="absolute top-4 right-4 bg-zinc-900/50 hover:bg-zinc-900 w-12 h-12 rounded-full text-white text-3xl flex items-center justify-center transition-all">&times;</button>
+            <p className="text-2xl font-black gradient-text uppercase tracking-tighter mb-4">{loadingMsg}</p>
+            <div className="w-full max-w-xs h-1 bg-zinc-900 rounded-full overflow-hidden">
+              <div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${loadingProgress}%` }}></div>
             </div>
           </div>
         )}
 
-        <div className="max-w-[1400px] mx-auto pb-32">
-          {error && (
-            <div className="mb-8 p-6 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-4 animate-up">
-              <i className="fa-solid fa-triangle-exclamation text-2xl"></i>
-              <span className="font-bold text-sm flex-1 leading-relaxed">{error}</span>
-              <button onClick={() => setError(null)} className="text-3xl opacity-50 hover:opacity-100">&times;</button>
-            </div>
-          )}
+        <div className="max-w-[1200px] mx-auto pb-32">
+          {error && <div className="mb-8 p-5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center justify-between animate-up"><span className="text-xs font-bold uppercase tracking-widest">{error}</span><button onClick={() => setError(null)} className="text-2xl">&times;</button></div>}
 
           {step === AppStep.UPLOAD && (
-            <div className="grid lg:grid-cols-2 gap-10 animate-up">
-              <div className="glass p-10 rounded-[2.5rem] border border-white/5 flex flex-col items-center text-center shadow-2xl">
-                <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center mb-8 border border-white/5">
-                  <i className="fa-solid fa-user-tie text-3xl text-blue-400"></i>
-                </div>
-                <h3 className="text-2xl font-black mb-2 uppercase tracking-tight">Subject Model</h3>
-                <p className="text-zinc-500 text-sm mb-10 font-medium italic">Wajib: Foto model pose tegak.</p>
-                <div className="w-full relative group">
-                  <label className={`
-                    w-full h-[450px] border-2 border-dashed rounded-[2rem] flex flex-col items-center justify-center transition-all overflow-hidden relative
-                    ${state.modelImage ? 'border-transparent bg-black/40' : 'border-zinc-800 hover:border-blue-500/50 hover:bg-blue-500/5 cursor-pointer'}
-                  `}>
-                    {state.modelImage ? (
-                      <img src={state.modelImage} className="absolute inset-0 w-full h-full object-contain p-4" alt="Model" />
-                    ) : (
-                      <div className="flex flex-col items-center">
-                        <i className="fa-solid fa-plus text-5xl text-zinc-700 mb-6 group-hover:text-blue-400 transition-colors"></i>
-                        <span className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-xs">Pilih Foto Model</span>
-                      </div>
-                    )}
-                    {!state.modelImage && <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'model')} />}
+            <div className="grid lg:grid-cols-2 gap-8 animate-up">
+              {[ {t: 'Subject Model', d: 'model', i: 'fa-user-tie', c: 'blue'}, {t: 'Product Asset', d: 'product', i: 'fa-shirt', c: 'emerald'} ].map((u) => (
+                <div key={u.d} className="glass p-10 rounded-[2.5rem] flex flex-col items-center text-center">
+                  <div className={`w-14 h-14 bg-${u.c}-500/10 text-${u.c}-400 rounded-2xl flex items-center justify-center mb-6 border border-${u.c}-500/10`}><i className={`fa-solid ${u.i} text-2xl`}></i></div>
+                  <h3 className="text-xl font-black mb-8 uppercase tracking-tighter">{u.t}</h3>
+                  <label className="w-full h-96 border-2 border-dashed border-zinc-800 hover:border-blue-500/50 rounded-[2rem] flex flex-col items-center justify-center transition-all cursor-pointer overflow-hidden relative group">
+                    {(state as any)[`${u.d}Image`] ? <img src={(state as any)[`${u.d}Image`]} className="w-full h-full object-contain p-6" alt={u.t} /> : <div className="flex flex-col items-center opacity-40 group-hover:opacity-100 transition-opacity"><i className="fa-solid fa-plus text-3xl mb-4"></i><span className="text-[10px] font-black uppercase tracking-widest">Klik untuk Pilih File</span></div>}
+                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, u.d as any)} />
                   </label>
-                  {state.modelImage && (
-                    <button onClick={() => removeImage('model')} className="absolute -top-3 -right-3 w-10 h-10 bg-zinc-900 border border-white/10 rounded-full flex items-center justify-center text-zinc-500 hover:text-red-400 shadow-2xl active:scale-90 z-10">
-                      <i className="fa-solid fa-xmark"></i>
-                    </button>
-                  )}
                 </div>
-              </div>
-
-              <div className="glass p-10 rounded-[2.5rem] border border-white/5 flex flex-col items-center text-center shadow-2xl">
-                <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center mb-8 border border-white/5">
-                  <i className="fa-solid fa-shirt text-3xl text-emerald-400"></i>
-                </div>
-                <h3 className="text-2xl font-black mb-2 uppercase tracking-tight">Product Asset</h3>
-                <p className="text-zinc-500 text-sm mb-10 font-medium italic">Wajib: Detail produk resolusi tinggi.</p>
-                <div className="w-full relative group">
-                  <label className={`
-                    w-full h-[450px] border-2 border-dashed rounded-[2rem] flex flex-col items-center justify-center transition-all overflow-hidden relative
-                    ${state.productImage ? 'border-transparent bg-black/40' : 'border-zinc-800 hover:border-emerald-500/50 hover:bg-emerald-500/5 cursor-pointer'}
-                  `}>
-                    {state.productImage ? (
-                      <img src={state.productImage} className="absolute inset-0 w-full h-full object-contain p-4" alt="Product" />
-                    ) : (
-                      <div className="flex flex-col items-center">
-                        <i className="fa-solid fa-plus text-5xl text-zinc-700 mb-6 group-hover:text-emerald-400 transition-colors"></i>
-                        <span className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-xs">Pilih Foto Produk</span>
-                      </div>
-                    )}
-                    {!state.productImage && <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'product')} />}
-                  </label>
-                  {state.productImage && (
-                    <button onClick={() => removeImage('product')} className="absolute -top-3 -right-3 w-10 h-10 bg-zinc-900 border border-white/10 rounded-full flex items-center justify-center text-zinc-500 hover:text-red-400 shadow-2xl active:scale-90 z-10">
-                      <i className="fa-solid fa-xmark"></i>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="lg:col-span-2 flex justify-center pt-10">
-                <button 
-                  onClick={startProcessing}
-                  disabled={!state.modelImage || !state.productImage}
-                  className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 px-24 py-8 rounded-[2rem] font-black text-xl transition-all shadow-xl active:scale-95 uppercase tracking-[0.4em]"
-                >
-                  MULAI PROSES AI
-                </button>
+              ))}
+              <div className="lg:col-span-2 flex justify-center pt-8">
+                <button disabled={!state.modelImage || !state.productImage} onClick={startProcessing} className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 px-20 py-7 rounded-3xl font-black text-sm uppercase tracking-[0.3em] transition-all active:scale-95 shadow-2xl shadow-blue-600/20">Mulai Produksi</button>
               </div>
             </div>
           )}
 
           {step === AppStep.REFINE && state.combinedImage && (
-            <div className="grid lg:grid-cols-2 gap-14 animate-up">
-              <div className="glass p-5 rounded-[2.5rem] border border-white/5 shadow-2xl sticky top-14 self-start">
-                 <img src={state.combinedImage} className="w-full rounded-2xl object-contain aspect-[9/16]" alt="Refined Master" />
-              </div>
-
-              <div className="space-y-12">
-                <h2 className="text-4xl font-black gradient-text uppercase tracking-tighter leading-none">Styling Ruangan</h2>
-                <div className="space-y-8">
-                  <div className="glass p-8 rounded-[2rem] border border-white/5">
-                    <label className="block text-xs font-black text-blue-400 uppercase tracking-widest mb-4">Latar Belakang & Suasana</label>
-                    <textarea 
-                      value={options.background}
-                      onChange={(e) => setOptions(o => ({...o, background: e.target.value}))}
-                      className="w-full bg-black/60 border border-white/10 rounded-xl p-6 focus:ring-2 focus:ring-blue-500 outline-none text-zinc-100 h-40 resize-none text-sm font-medium leading-relaxed"
-                    />
-                    <div className="mt-6 grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Ref Style</label>
-                        <input type="text" value={options.backgroundRef} onChange={(e) => setOptions(o => ({...o, backgroundRef: e.target.value}))} className="w-full bg-black/60 border border-white/10 rounded-xl px-5 py-3 text-xs" />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Lighting</label>
-                        <input type="text" value={options.lightingRef} onChange={(e) => setOptions(o => ({...o, lightingRef: e.target.value}))} className="w-full bg-black/60 border border-white/10 rounded-xl px-5 py-3 text-xs" />
-                      </div>
-                    </div>
+            <div className="grid lg:grid-cols-2 gap-12 animate-up">
+              <div className="glass p-4 rounded-[3rem] sticky top-14 self-start"><img src={state.combinedImage} className="w-full rounded-[2.5rem] aspect-[9/16] object-contain bg-black/50" alt="Preview" /></div>
+              <div className="space-y-10">
+                <h2 className="text-3xl font-black tracking-tighter uppercase">Kustomisasi Ruang</h2>
+                <div className="glass p-8 rounded-[2.5rem] space-y-6">
+                  <div>
+                    <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3">Prompt Lingkungan</label>
+                    <textarea value={options.background} onChange={(e) => setOptions(o => ({...o, background: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-2xl p-5 text-xs outline-none focus:ring-1 focus:ring-blue-500/50 h-32 resize-none" />
                   </div>
-                  
-                  <div className="glass p-8 rounded-[2rem] border border-white/5">
-                    <label className="block text-xs font-black text-blue-400 uppercase tracking-widest mb-4">Neon Branding (Text)</label>
-                    <input 
-                      type="text"
-                      value={options.neonText}
-                      onChange={(e) => setOptions(o => ({...o, neonText: e.target.value}))}
-                      className="w-full bg-black/60 border border-white/10 rounded-xl px-6 py-5 focus:ring-2 focus:ring-blue-500 outline-none text-xl font-black uppercase"
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3">Ref Style</label><input type="text" value={options.backgroundRef} onChange={(e) => setOptions(o => ({...o, backgroundRef: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-[10px]" /></div>
+                    <div><label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3">Lighting</label><input type="text" value={options.lightingRef} onChange={(e) => setOptions(o => ({...o, lightingRef: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-[10px]" /></div>
                   </div>
+                  <div><label className="block text-[10px] font-black text-blue-500 uppercase tracking-widest mb-3">Neon Sign Text</label><input type="text" value={options.neonText} onChange={(e) => setOptions(o => ({...o, neonText: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-sm font-black uppercase tracking-widest" /></div>
                 </div>
-
-                <div className="flex flex-col gap-5 pt-4">
-                  <button onClick={handleRefine} className="bg-zinc-900 hover:bg-zinc-800 py-6 rounded-2xl font-bold text-xs uppercase tracking-[0.3em] transition-all border border-white/5 active:scale-95">
-                    UPDATE PREVIEW
-                  </button>
-                  <button onClick={goToStoryboard} className="bg-blue-600 hover:bg-blue-500 py-8 rounded-[2.5rem] font-black text-lg uppercase tracking-[0.4em] transition-all shadow-xl active:scale-95">
-                    LANJUT KE STORYBOARD
-                  </button>
+                <div className="flex flex-col gap-4">
+                  <button onClick={handleRefine} className="py-5 rounded-2xl border border-white/10 hover:bg-white/5 font-bold text-[10px] uppercase tracking-widest transition-all">Update Preview</button>
+                  <button onClick={goToStoryboard} className="py-7 rounded-[2rem] bg-blue-600 hover:bg-blue-500 font-black text-sm uppercase tracking-[0.3em] transition-all shadow-xl shadow-blue-600/20">Lanjut Storyboard</button>
                 </div>
               </div>
             </div>
           )}
 
           {step === AppStep.STORYBOARD && state.storyboardGrid && (
-            <div className="max-w-4xl mx-auto flex flex-col items-center animate-up">
-              <h2 className="text-4xl font-black mb-12 tracking-tighter text-center uppercase">Sequence Grid 3x3</h2>
-              <div className="w-full glass p-6 rounded-[2.5rem] border border-white/10 shadow-2xl mb-14">
-                <img src={state.storyboardGrid} className="w-full rounded-2xl aspect-[9/16] object-contain shadow-2xl" alt="Storyboard Grid" />
-              </div>
-              <button onClick={startExtraction} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 px-24 py-10 rounded-[3rem] font-black text-2xl uppercase tracking-[0.3em] shadow-2xl active:scale-95 leading-none">
-                EKSTRAK POSISI 1-9
-              </button>
+            <div className="max-w-3xl mx-auto flex flex-col items-center animate-up">
+              <h2 className="text-3xl font-black mb-10 tracking-tighter uppercase">Master Grid 3x3</h2>
+              <div className="glass p-5 rounded-[3rem] mb-12"><img src={state.storyboardGrid} className="w-full rounded-[2.5rem] aspect-[9/16] object-contain shadow-2xl" alt="Grid" /></div>
+              <button onClick={startExtraction} className="bg-blue-600 hover:bg-blue-500 px-24 py-8 rounded-[2rem] font-black text-lg uppercase tracking-[0.3em] shadow-xl">Ekstrak Semua Frame</button>
             </div>
           )}
 
           {step === AppStep.RESULTS && (
-            <div className="grid lg:grid-cols-12 gap-12 items-start animate-up">
-              <div className="lg:col-span-3 space-y-10 sticky top-14 self-start">
-                <h3 className="text-[10px] font-black text-blue-400 px-4 uppercase tracking-[0.3em]">Master Template</h3>
-                <div className="glass p-4 rounded-[2.5rem] border border-white/10 shadow-2xl cursor-pointer group relative" onClick={() => setPreviewImage(state.storyboardGrid)}>
-                  <div className="absolute inset-0 bg-blue-600/30 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center z-10 backdrop-blur-sm rounded-[2.5rem]">
-                    <i className="fa-solid fa-expand text-3xl text-white"></i>
-                  </div>
-                  <img src={state.storyboardGrid!} className="w-full rounded-2xl aspect-[9/16] object-contain" alt="Master Reference" />
+            <div className="space-y-12 animate-up">
+              <div className="flex justify-between items-end px-4">
+                <div><h2 className="text-3xl font-black tracking-tighter mb-2">Final Output Assets</h2><p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">9 Scenes Berhasil Diekstrak</p></div>
+                <div className="text-right">
+                  <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-2">Extraction Progress</p>
+                  <div className="w-48 h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-blue-600 transition-all duration-700" style={{ width: `${state.extractionProgress}%` }}></div></div>
                 </div>
               </div>
-
-              <div className="lg:col-span-9 space-y-12">
-                <div className="flex flex-col sm:flex-row justify-between items-end gap-6 px-6">
-                  <div>
-                    <h2 className="text-4xl font-black tracking-tighter mb-2">Assets Selesai</h2>
-                    <p className="text-zinc-500 font-black uppercase tracking-[0.3em] text-[10px]">Ready for Animation</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] font-black text-blue-400 tracking-widest uppercase mb-3 block">Extraction Progress</span>
-                    <div className="w-64 h-2.5 bg-zinc-900 rounded-full overflow-hidden border border-white/5 shadow-inner">
-                      <div className="h-full bg-gradient-to-r from-blue-600 to-indigo-500 transition-all duration-700" style={{ width: `${state.extractionProgress}%` }}></div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10 pb-32">
-                  {state.scenes.map((scene, idx) => (
-                    <div key={scene.id} className="glass p-7 rounded-[3rem] border border-white/5 flex flex-col h-full hover:border-blue-500/30 transition-all group/card">
-                      <div className="aspect-[9/16] bg-black/60 rounded-[2rem] overflow-hidden relative mb-10 shadow-inner border border-white/10 cursor-pointer" onClick={() => scene.image && setPreviewImage(scene.image)}>
-                        {scene.image ? (
-                          <>
-                            {scene.videoUrl ? (
-                              <video src={scene.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline />
-                            ) : (
-                              <img src={scene.image} className="w-full h-full object-cover" alt={`Frame ${idx+1}`} />
-                            )}
-                            <div className="absolute top-5 right-5 z-20 flex flex-col gap-4 opacity-0 group-hover/card:opacity-100 transition-all">
-                              <a href={scene.videoUrl || scene.image} download className="w-11 h-11 bg-white text-black rounded-2xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all">
-                                <i className="fa-solid fa-download text-lg"></i>
-                              </a>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            {scene.isExtracting ? (
-                              <div className="flex flex-col items-center">
-                                <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                                <span className="text-[10px] font-black uppercase text-zinc-600 tracking-widest">Processing...</span>
-                              </div>
-                            ) : <i className="fa-solid fa-lock text-3xl text-zinc-900 opacity-20"></i>}
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {state.scenes.map((scene, idx) => (
+                  <div key={scene.id} className="glass p-6 rounded-[2.5rem] flex flex-col h-full group">
+                    <div className="aspect-[9/16] bg-black/40 rounded-[2rem] overflow-hidden relative mb-8 border border-white/5">
+                      {scene.image ? (
+                        <>
+                          {scene.videoUrl ? <video src={scene.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline /> : <img src={scene.image} className="w-full h-full object-cover" alt={`Frame ${idx+1}`} />}
+                          <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <a href={scene.videoUrl || scene.image} download className="w-10 h-10 bg-white text-black rounded-xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all"><i className="fa-solid fa-download"></i></a>
                           </div>
-                        )}
-                      </div>
-
-                      <div className="mt-auto px-2 pb-2">
-                        <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] mb-2 flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span> SCENE 0{idx+1}
-                        </p>
-                        {scene.image && !scene.videoUrl && (
-                          <div className="space-y-5">
-                            <textarea
-                              placeholder="Ketik instruksi gerakan..."
-                              value={scenePrompts[idx]}
-                              onChange={(e) => {
-                                const newPrompts = [...scenePrompts];
-                                newPrompts[idx] = e.target.value;
-                                setScenePrompts(newPrompts);
-                              }}
-                              className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-xs focus:ring-1 focus:ring-blue-500 outline-none h-20 resize-none font-medium text-zinc-400"
-                            />
-                            <button 
-                              onClick={() => handleGenerateVideo(scene.id)}
-                              disabled={scene.isGeneratingVideo}
-                              className="w-full py-5 rounded-[1.5rem] font-bold text-[11px] uppercase tracking-[0.3em] bg-white/5 border border-white/10 hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-4 text-zinc-400"
-                            >
-                              {scene.isGeneratingVideo ? <><i className="fa-solid fa-spinner fa-spin"></i> Rendering...</> : <><i className="fa-solid fa-clapperboard"></i> Buat Animasi Video</>}
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                        </>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          {scene.isExtracting ? <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div> : <i className="fa-solid fa-hourglass opacity-20 text-2xl"></i>}
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
+                    {scene.image && !scene.videoUrl && (
+                      <div className="mt-auto space-y-4">
+                        <textarea placeholder="Gerakan: Cinematic flow..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/20 border border-white/5 rounded-xl p-4 text-[10px] h-16 resize-none outline-none focus:ring-1 focus:ring-blue-500/30" />
+                        <button disabled={scene.isGeneratingVideo} onClick={() => handleGenerateVideo(scene.id)} className="w-full py-4 rounded-xl bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 text-[10px] font-black uppercase tracking-widest transition-all">
+                          {scene.isGeneratingVideo ? <i className="fa-solid fa-spinner fa-spin"></i> : <><i className="fa-solid fa-video mr-2"></i> Render Video</>}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}
