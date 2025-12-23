@@ -6,7 +6,7 @@ import { GoogleGenAI } from "@google/genai";
  * Jika Anda ingin memasukkan KEY secara manual (Hardcode), ganti baris di bawah ini:
  * const getApiKey = () => "AIzaSyAhsMqPWuM7RSBRc-HK1z_3FxglWkH0piM";
  */
-const getApiKey = () => process.env.API_KEY || "";
+const getApiKey = () => process.env.API_KEY || "AIzaSyAhsMqPWuM7RSBRc-HK1z_3FxglWkH0piM";
 
 const PRO_IMAGE_MODEL = 'gemini-3-pro-image-preview';
 const VEO_MODEL = 'veo-3.1-fast-generate-preview';
