@@ -354,33 +354,47 @@ const App: React.FC = () => {
                   <div className="w-48 h-1 bg-zinc-900 rounded-full overflow-hidden"><div className="h-full bg-blue-600 transition-all duration-700" style={{ width: `${state.extractionProgress}%` }}></div></div>
                 </div>
               </div>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {state.scenes.map((scene, idx) => (
-                  <div key={scene.id} className="glass p-6 rounded-[2.5rem] flex flex-col h-full group">
-                    <div className="aspect-[9/16] bg-black/40 rounded-[2rem] overflow-hidden relative mb-8 border border-white/5 shadow-inner">
-                      {scene.image ? (
-                        <>
-                          {scene.videoUrl ? <video src={scene.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline /> : <img src={scene.image} className="w-full h-full object-cover" alt={`Frame ${idx+1}`} />}
-                          <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <a href={scene.videoUrl || scene.image} download className="w-10 h-10 bg-white text-black rounded-xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all"><i className="fa-solid fa-download"></i></a>
+
+              {/* Layout dengan Master View di Samping */}
+              <div className="grid lg:grid-cols-4 gap-10">
+                {/* Master Storyboard Reference */}
+                <div className="lg:col-span-1 space-y-6">
+                  <div className="glass p-4 rounded-[2rem] sticky top-10 border-blue-500/10">
+                    <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4 text-center">Master Reference</p>
+                    <img src={state.storyboardGrid || ''} className="w-full rounded-[1.5rem] aspect-[9/16] object-cover shadow-2xl" alt="Master Grid" />
+                  </div>
+                </div>
+
+                {/* Individual Extracted Scenes */}
+                <div className="lg:col-span-3 grid md:grid-cols-2 gap-8">
+                  {state.scenes.map((scene, idx) => (
+                    <div key={scene.id} className="glass p-6 rounded-[2.5rem] flex flex-col h-full group">
+                      <div className="aspect-[9/16] bg-black/40 rounded-[2rem] overflow-hidden relative mb-8 border border-white/5 shadow-inner">
+                        {scene.image ? (
+                          <>
+                            {scene.videoUrl ? <video src={scene.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline /> : <img src={scene.image} className="w-full h-full object-cover" alt={`Frame ${idx+1}`} />}
+                            <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <a href={scene.videoUrl || scene.image} download className="w-10 h-10 bg-white text-black rounded-xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all"><i className="fa-solid fa-download"></i></a>
+                            </div>
+                            <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur-md px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border border-white/10">Scene {idx+1}</div>
+                          </>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            {scene.isExtracting ? <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div> : <i className="fa-solid fa-hourglass opacity-20 text-2xl"></i>}
                           </div>
-                        </>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          {scene.isExtracting ? <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div> : <i className="fa-solid fa-hourglass opacity-20 text-2xl"></i>}
+                        )}
+                      </div>
+                      {scene.image && !scene.videoUrl && (
+                        <div className="mt-auto space-y-4">
+                          <textarea placeholder="Gerakan: Cinematic flow..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/20 border border-white/5 rounded-xl p-4 text-[10px] h-16 resize-none outline-none focus:ring-1 focus:ring-blue-500/30 font-medium" />
+                          <button disabled={scene.isGeneratingVideo} onClick={() => handleGenerateVideo(scene.id)} className="w-full py-4 rounded-xl bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 text-[10px] font-black uppercase tracking-widest transition-all">
+                            {scene.isGeneratingVideo ? <i className="fa-solid fa-spinner fa-spin"></i> : <><i className="fa-solid fa-video mr-2"></i> Render Video</>}
+                          </button>
                         </div>
                       )}
                     </div>
-                    {scene.image && !scene.videoUrl && (
-                      <div className="mt-auto space-y-4">
-                        <textarea placeholder="Gerakan: Cinematic flow..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/20 border border-white/5 rounded-xl p-4 text-[10px] h-16 resize-none outline-none focus:ring-1 focus:ring-blue-500/30 font-medium" />
-                        <button disabled={scene.isGeneratingVideo} onClick={() => handleGenerateVideo(scene.id)} className="w-full py-4 rounded-xl bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 text-[10px] font-black uppercase tracking-widest transition-all">
-                          {scene.isGeneratingVideo ? <i className="fa-solid fa-spinner fa-spin"></i> : <><i className="fa-solid fa-video mr-2"></i> Render Video</>}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           )}

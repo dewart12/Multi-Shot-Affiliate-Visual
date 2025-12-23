@@ -100,16 +100,26 @@ export const extractCell = async (gridImage: string, index: number): Promise<str
   return callWithRetry(async () => {
     const ai = getAI();
     const pos = ["top-left", "top-center", "top-right", "middle-left", "center", "middle-right", "bottom-left", "bottom-center", "bottom-right"];
+    
+    // Prompt diperkuat untuk memaksa AI melakukan isolasi frame (Crop)
+    const prompt = `CRITICAL TASK: IMAGE CROP & ISOLATION.
+INPUT: A 3x3 storyboard grid image.
+TARGET: Focus exclusively on the ${pos[index]} cell.
+ACTION: Zoom in and crop so that ONLY the contents of the ${pos[index]} cell are visible. 
+OUTPUT: A single isolated 9:16 portrait image. 
+RESTRICTION: Do not return the whole grid. Remove all grid lines and neighboring cells. Ensure high fidelity for the single pose.`;
+
     const response = await ai.models.generateContent({
       model: PRO_MODEL,
       contents: {
         parts: [
           { inlineData: { data: gridImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `Extract ONLY the ${pos[index]} cell as a single 9:16 high res image. No grid lines.` }
+          { text: prompt }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
     });
+    
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
