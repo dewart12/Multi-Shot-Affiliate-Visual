@@ -15,10 +15,9 @@ async function callWithRetry<T>(fn: () => Promise<T>, onRetry?: (msg: string) =>
       lastError = error;
       const errorStr = JSON.stringify(error) || error.message || "";
       
-      // Jika kena limit (429) atau server sibuk (500/503)
       if (errorStr.includes("429") || errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("500") || errorStr.includes("503")) {
-        // Untuk Tier 1, gambar 2K butuh cooldown lebih lama (20-30 detik)
-        const waitTime = (attempt + 1) * 20000; 
+        // Karena sudah 1K, cooldown bisa lebih singkat (10-15 detik)
+        const waitTime = (attempt + 1) * 15000; 
         if (onRetry) onRetry(`Server Padat. Menunggu jatah kuota (${waitTime/1000}s)...`);
         await sleep(waitTime);
         continue;
@@ -44,10 +43,10 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
         parts: [
           { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } },
           { inlineData: { data: productBase64.split(',')[1], mimeType: 'image/png' } },
-          { text: `TASK: ABSOLUTE PIXEL-PERFECT CLOTHING SWAP. Use model face/pose, swap clothes with product image. 100% fidelity. 2K resolution. Aspect 9:16.` }
+          { text: `TASK: ABSOLUTE PIXEL-PERFECT CLOTHING SWAP. Use model face/pose, swap clothes with product image. 100% fidelity. 1K resolution. Aspect 9:16.` }
         ]
       },
-      config: { imageConfig: { aspectRatio: "9:16", imageSize: "2K" } }
+      config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
@@ -84,10 +83,10 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
       contents: {
         parts: [
           { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `PREMIUM MUKENA FASHION STORYBOARD (3x3 SEAMLESS GRID): Generate 9 DIFFERENT scenes of SAME character with neon branding "${neonText}". No grid lines. Aspect 9:16. 2K Resolution.` }
+          { text: `PREMIUM MUKENA FASHION STORYBOARD (3x3 SEAMLESS GRID): Generate 9 DIFFERENT scenes of SAME character with neon branding "${neonText}". No grid lines. Aspect 9:16. 1K Resolution.` }
         ]
       },
-      config: { imageConfig: { aspectRatio: "9:16", imageSize: "2K" } }
+      config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
