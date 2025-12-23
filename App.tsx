@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { AppStep, GenerationState, CustomizationOptions } from './types.ts';
 import { 
@@ -9,15 +8,13 @@ import {
   generateSceneVideo
 } from './services/geminiService.ts';
 
-// Declare aistudio for TS matching environment definitions.
 declare global {
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
     openSelectKey: () => Promise<void>;
   }
   interface Window {
-    // Removed readonly to fix "All declarations of 'aistudio' must have identical modifiers"
-    aistudio: AIStudio;
+    aistudio?: AIStudio;
   }
 }
 
@@ -58,53 +55,33 @@ const App: React.FC = () => {
   const progressIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const checkKey = async () => {
-      try {
-        // Cek apakah API Key sudah tersedia di environment (injeksi otomatis)
-        const envKey = process.env.API_KEY;
-        if (envKey && envKey !== 'undefined' && envKey.length > 5) {
-          setIsActivated(true);
-          return;
-        }
-
-        // Jika tidak ada di env, cek via sistem aistudio jika tersedia
-        if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
+    const checkExistingKey = async () => {
+      if (process.env.API_KEY && process.env.API_KEY !== 'undefined') {
+        setIsActivated(true);
+        return;
+      }
+      if (window.aistudio?.hasSelectedApiKey) {
+        try {
           const hasKey = await window.aistudio.hasSelectedApiKey();
-          if (hasKey) {
-            setIsActivated(true);
-          }
+          if (hasKey) setIsActivated(true);
+        } catch (e) {
+          console.debug("Check failed");
         }
-      } catch (e) {
-        console.warn("Pemeriksaan kunci dilewati:", e);
       }
     };
-    checkKey();
+    checkExistingKey();
   }, []);
 
   const handleActivate = async () => {
-    setError(null);
     try {
-      if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
-        await window.aistudio.openSelectKey();
-        // Beri jeda sangat singkat untuk sistem memproses pemilihan
-        setIsActivated(true);
-      } else {
-        // Fallback: Jika dialog gagal panggil tapi ada key di env, izinkan masuk
-        if (process.env.API_KEY) {
-          setIsActivated(true);
-        } else {
-          throw new Error("Sistem pemilihan project tidak merespon. Pastikan browser tidak memblokir pop-up.");
-        }
+      if (window.aistudio?.openSelectKey) {
+        window.aistudio.openSelectKey();
       }
-    } catch (err: any) {
-      console.error(err);
-      setError(`Gagal: ${err.message || "Sistem pemilihan tidak tersedia"}`);
-      
-      // Jika error tapi sebenarnya key sudah ada (race condition), izinkan masuk sebagai upaya terakhir
-      if (process.env.API_KEY) {
-        setTimeout(() => setIsActivated(true), 1000);
-      }
+    } catch (e) {
+      console.warn("Pop-up diblokir, mengaktifkan mode mandiri.");
     }
+    setIsActivated(true);
+    setError(null);
   };
 
   const startProgress = () => {
@@ -125,7 +102,6 @@ const App: React.FC = () => {
     setLoadingProgress(100);
     setTimeout(() => {
       setLoadingProgress(0);
-      setRetryMsg('');
     }, 500);
   };
 
@@ -143,11 +119,8 @@ const App: React.FC = () => {
 
   const handleError = (err: any) => {
     const msg = err.message || "Terjadi kendala teknis.";
-    if (msg === "API_KEY_RESET_REQUIRED") {
-      setError("Sesi API berakhir atau project tidak ditemukan. Silakan pilih kembali Project Key Anda.");
-      setIsActivated(false);
-    } else if (msg.includes("401") || msg.includes("API_KEY_INVALID")) {
-      setError("API Key tidak valid. Harap pilih Project dengan billing aktif.");
+    if (msg === "API_KEY_RESET_REQUIRED" || msg.includes("Requested entity was not found")) {
+      setError("Project tidak ditemukan. Silakan pilih kembali Project Key Anda.");
       setIsActivated(false);
     } else {
       setError(msg);
@@ -161,7 +134,7 @@ const App: React.FC = () => {
     try {
       const combined = await generateCombinedImage(state.modelImage, state.productImage, setRetryMsg);
       setState(prev => ({ ...prev, combinedImage: combined }));
-      setStep(AppStep.REFINE);
+      setStep(AppStep.REFINE); // Langsung pindah ke tahap Refine setelah sukses
     } catch (err: any) { handleError(err); } finally { setLoadingMsg(''); stopProgress(); }
   };
 
@@ -229,21 +202,21 @@ const App: React.FC = () => {
             <i className="fa-solid fa-crown text-3xl text-white"></i>
           </div>
           <h1 className="text-3xl font-black mb-3 tracking-tighter uppercase leading-none">Gemini 3 Pro <br/><span className="text-blue-500">Production Mode</span></h1>
-          <p className="text-zinc-500 text-sm mb-10 leading-relaxed">Pilih Project Google Cloud milik Anda untuk akses model Pro dan Veo secara mandiri.</p>
+          <p className="text-zinc-500 text-sm mb-10 leading-relaxed">Pilih Project Google Cloud Anda (atau Bypass) untuk akses fitur profesional secara mandiri.</p>
           
-          <button onClick={handleActivate} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black transition-all uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20 active:scale-95 mb-6">PILIH PROJECT KEY</button>
+          <button onClick={handleActivate} className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black transition-all uppercase tracking-widest text-xs shadow-lg shadow-blue-600/20 active:scale-95 mb-10">MASUK KE APLIKASI</button>
           
           <div className="flex flex-col gap-4">
             <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest hover:text-blue-400 transition-colors">
-              Pelajari Billing & Kuota <i className="fa-solid fa-external-link ml-1"></i>
+              Tutorial Billing & API Key <i className="fa-solid fa-external-link ml-1"></i>
             </a>
-            <p className="text-[8px] text-zinc-700 uppercase font-black tracking-widest">Key Anda bersifat privat & terisolasi</p>
+            <p className="text-[8px] text-zinc-700 uppercase font-black tracking-widest">Akses terisolasi demi keamanan akun Anda</p>
           </div>
 
           {error && (
-            <div className="mt-8 animate-up">
-              <p className="text-red-400 text-[10px] font-black uppercase tracking-widest bg-red-500/10 p-4 rounded-xl border border-red-500/20 mb-4">{error}</p>
-              <button onClick={() => setIsActivated(true)} className="text-[9px] font-black text-blue-500 uppercase underline decoration-2 underline-offset-4">Tetap Masuk (Mode Bypass)</button>
+            <div className="mt-8 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
+              <p className="text-red-400 text-[9px] font-black uppercase tracking-widest mb-2">{error}</p>
+              <button onClick={() => setIsActivated(true)} className="text-[9px] font-black text-blue-500 uppercase underline">Klik Untuk Lewati</button>
             </div>
           )}
         </div>
@@ -274,7 +247,7 @@ const App: React.FC = () => {
               </button>
             ))}
           </nav>
-          <div className="pt-8 border-t border-white/5 space-y-4">
+          <div className="pt-8 border-t border-white/5">
              <button onClick={() => setIsActivated(false)} className="w-full py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest hover:bg-white/5 rounded-xl transition-all">Ganti Project Key</button>
           </div>
         </div>
