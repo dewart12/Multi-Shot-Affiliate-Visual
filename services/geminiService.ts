@@ -4,7 +4,7 @@ import { GoogleGenAI } from "@google/genai";
  * PENTING UNTUK USER GITHUB:
  * Secara default, aplikasi ini mengambil API Key dari environment variable (process.env.API_KEY).
  * Jika Anda ingin memasukkan KEY secara manual (Hardcode), ganti baris di bawah ini:
- * const getApiKey = () => "ISI_KEY_LU_DI_SINI";
+ * const getApiKey = () => "AIzaSyAhsMqPWuM7RSBRc-HK1z_3FxglWkH0piM";
  */
 const getApiKey = () => process.env.API_KEY || "";
 
