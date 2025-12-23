@@ -37,14 +37,17 @@
         .animate-up {
             animation: fade-in-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.2);
+        }
     </style>
     <script>
-        // Shim untuk mencegah ReferenceError: process is not defined di localhost
-        window.process = {
-            env: {
-                API_KEY: "" 
-            }
-        };
+        // Inisialisasi shim process.env
+        window.process = window.process || {};
+        window.process.env = window.process.env || {};
+        // Cek jika ada key tersimpan di session sebelumnya
+        const savedKey = sessionStorage.getItem('gemini_api_key');
+        window.process.env.API_KEY = savedKey || "";
     </script>
     <script type="importmap">
 {
@@ -61,7 +64,6 @@
 </head>
 <body>
     <div id="root"></div>
-    <!-- Memuat file entry point secara eksplisit -->
     <script type="module" src="./index.tsx"></script>
 </body>
 </html>

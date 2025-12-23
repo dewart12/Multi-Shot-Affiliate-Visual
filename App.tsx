@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { AppStep, GenerationState, CustomizationOptions } from './types.ts';
 import { 
   checkApiKey, 
-  openApiKeySelector, 
+  openApiKeySelector,
   generateCombinedImage, 
   refineAndCustomize, 
   generateStoryboardGrid, 
@@ -50,6 +50,7 @@ const App: React.FC = () => {
   const progressIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
+    // Fix: Use process.env.API_KEY implicitly through checkApiKey
     const init = async () => {
       const ok = await checkApiKey();
       setHasApiKey(ok);
@@ -77,13 +78,30 @@ const App: React.FC = () => {
     setTimeout(() => setLoadingProgress(0), 500);
   };
 
-  const handleActivateKey = async () => {
+  /**
+   * Fix: Implement robust error handling including "Requested entity was not found."
+   */
+  const handleApiError = async (err: any) => {
+    const msg = err.message || JSON.stringify(err) || "Unknown error occurred";
+    setError(msg);
+    
+    if (msg.includes("Requested entity was not found.") || msg.includes("API_KEY") || msg.includes("401") || msg.includes("403")) {
+      setHasApiKey(false);
+      setError("API Key tidak valid, tidak ditemukan, atau butuh pengaturan billing.");
+    }
+  };
+
+  /**
+   * Fix: Implement platform-compliant key selection.
+   */
+  const handleSelectApiKey = async () => {
     try {
       await openApiKeySelector();
-      // Mengikuti aturan: asumsikan kunci dipilih untuk menghindari race condition
+      // Assume successful selection per guidelines to avoid race condition
       setHasApiKey(true);
+      setError(null);
     } catch (err) {
-      setError("Gagal memicu pemilih API Key.");
+      console.error("Key selection failed", err);
     }
   };
 
@@ -122,10 +140,7 @@ const App: React.FC = () => {
       setState(prev => ({ ...prev, combinedImage: combined }));
       setStep(AppStep.REFINE);
     } catch (err: any) {
-      setError(err.message);
-      if (err.message.includes("Requested entity was not found")) {
-        setHasApiKey(false);
-      }
+      await handleApiError(err);
     } finally {
       setLoadingMsg('');
       stopProgress();
@@ -147,7 +162,7 @@ const App: React.FC = () => {
       );
       setState(prev => ({ ...prev, combinedImage: refined }));
     } catch (err: any) {
-      setError(err.message);
+      await handleApiError(err);
     } finally {
       setLoadingMsg('');
       stopProgress();
@@ -163,7 +178,7 @@ const App: React.FC = () => {
       setState(prev => ({ ...prev, storyboardGrid: grid }));
       setStep(AppStep.STORYBOARD);
     } catch (err: any) {
-      setError(err.message);
+      await handleApiError(err);
     } finally {
       setLoadingMsg('');
       stopProgress();
@@ -191,11 +206,12 @@ const App: React.FC = () => {
         }));
         
         if (i < 8) {
-          await new Promise(resolve => setTimeout(resolve, 12000));
+          // Extra delay to mitigate concurrent request quota for high-res extraction
+          await new Promise(resolve => setTimeout(resolve, 8000));
         }
         
       } catch (err: any) {
-        setError(`Limit tercapai. Mencoba kembali secara otomatis.`);
+        await handleApiError(err);
         setState(prev => ({
           ...prev,
           scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: false } : s)
@@ -212,7 +228,7 @@ const App: React.FC = () => {
       const upscaled = await upscaleScene(scene.image);
       setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, image: upscaled, isUpscaling: false } : s)}));
     } catch (err: any) {
-      setError(`Upscale gagal: ${err.message}`);
+      await handleApiError(err);
       setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, isUpscaling: false } : s)}));
     }
   };
@@ -225,7 +241,7 @@ const App: React.FC = () => {
       const videoUrl = await generateSceneVideo(scene.image, scenePrompts[id]);
       setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, videoUrl, isGeneratingVideo: false } : s)}));
     } catch (err: any) {
-      setError(`Video gagal: ${err.message}`);
+      await handleApiError(err);
       setState(prev => ({...prev, scenes: prev.scenes.map(s => s.id === id ? { ...s, isGeneratingVideo: false } : s)}));
     }
   };
@@ -234,7 +250,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#0a0a0b] flex flex-col items-center justify-center">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">Menyiapkan Engine...</p>
+        <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">Membaca Sesi...</p>
       </div>
     );
   }
@@ -243,24 +259,28 @@ const App: React.FC = () => {
     return (
       <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[#080809] p-6">
         <div className="fixed inset-0 bg-blue-900/5 blur-[120px] pointer-events-none"></div>
-        <div className="max-w-md w-full glass p-12 rounded-[3rem] border border-blue-500/20 shadow-2xl text-center animate-up relative z-10">
-          <div className="w-24 h-24 bg-gradient-to-tr from-blue-600 to-cyan-400 rounded-3xl mx-auto flex items-center justify-center mb-10 rotate-3 shadow-xl">
-            <i className="fa-solid fa-lock text-4xl text-white"></i>
+        <div className="max-w-md w-full glass p-10 sm:p-14 rounded-[3.5rem] border border-blue-500/20 shadow-2xl text-center animate-up relative z-10">
+          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-cyan-400 rounded-3xl mx-auto flex items-center justify-center mb-10 rotate-3 shadow-xl">
+            <i className="fa-solid fa-key text-3xl text-white"></i>
           </div>
-          <h1 className="text-3xl font-black mb-6 gradient-text tracking-tighter uppercase leading-none">Aktivasi Alat</h1>
-          <p className="text-zinc-400 mb-10 text-sm font-medium leading-relaxed">
-            Multishot Affiliate AI membutuhkan <b>Gemini API Key</b> pribadi Anda untuk menjalankan fitur video dan gambar 2K.
+          <h1 className="text-3xl font-black mb-4 gradient-text tracking-tighter uppercase leading-none">Pilih API Key</h1>
+          <p className="text-zinc-400 mb-10 text-sm font-medium leading-relaxed px-2">
+            Silakan pilih <b>Google Gemini API Key</b> dari proyek GCP yang memiliki penagihan aktif (paid project) untuk mengaktifkan fitur AI Storyboard & Video.
           </p>
+          
           <div className="space-y-6">
+            {error && <p className="text-red-400 text-xs font-bold uppercase tracking-wider mb-2">{error}</p>}
+
             <button
-              onClick={handleActivateKey}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-6 rounded-2xl transition-all shadow-xl active:scale-95 uppercase tracking-widest text-sm flex items-center justify-center gap-3"
+              onClick={handleSelectApiKey}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-6 rounded-2xl transition-all shadow-xl active:scale-95 uppercase tracking-widest text-sm flex items-center justify-center gap-3 shadow-blue-500/20"
             >
-              <i className="fa-solid fa-key"></i> AKTIFKAN & MULAI
+              PILIH & AKTIFKAN API
             </button>
+            
             <div className="pt-6 border-t border-white/5">
               <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-zinc-500 hover:text-blue-400 transition-colors font-bold uppercase tracking-widest text-[10px]">
-                Panduan Mendapatkan API KEY <i className="fa-solid fa-external-link ml-1"></i>
+                PELAJARI TENTANG BILLING <i className="fa-solid fa-external-link ml-1"></i>
               </a>
             </div>
           </div>
@@ -319,6 +339,15 @@ const App: React.FC = () => {
               );
             })}
           </nav>
+
+          <div className="mt-auto pt-8 border-t border-white/5">
+             <button 
+                onClick={handleSelectApiKey} 
+                className="w-full flex items-center justify-center gap-3 py-4 rounded-xl border border-white/5 hover:bg-white/5 transition-all text-xs font-bold text-zinc-500 hover:text-blue-400"
+              >
+                <i className="fa-solid fa-gear"></i> GANTI API KEY
+             </button>
+          </div>
         </div>
       </aside>
 

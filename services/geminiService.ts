@@ -39,38 +39,34 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 6): Promise<T
 }
 
 /**
- * Pengecekan API Key yang support Localhost dan AI Studio Picker.
+ * Pengecekan API Key yang support platform API Key selection.
+ * Fix: Use process.env.API_KEY directly as per guidelines.
  */
 export const checkApiKey = async (): Promise<boolean> => {
   try {
-    // 1. Cek variabel lingkungan (untuk localhost development)
-    if (process.env.API_KEY && process.env.API_KEY !== "") {
-      return true;
-    }
-    // 2. Cek platform helper (untuk AI Studio sandbox)
+    // Cek platform helper (untuk AI Studio sandbox jika tersedia)
     if (typeof (window as any).aistudio?.hasSelectedApiKey === 'function') {
       return await (window as any).aistudio.hasSelectedApiKey();
     }
-    return false;
+    // Fallback ke check direct environment variable
+    return !!process.env.API_KEY;
   } catch (e) {
     return false;
   }
 };
 
 /**
- * Memicu dialog pemilihan kunci dari platform.
+ * Memicu dialog pemilihan kunci (Wajib untuk Gemini 3 Pro & Veo)
  */
 export const openApiKeySelector = async () => {
   if (typeof (window as any).aistudio?.openSelectKey === 'function') {
     await (window as any).aistudio.openSelectKey();
-  } else {
-    // Jika di localhost dan tidak ada window.aistudio, ingatkan user
-    alert("Di lingkungan Localhost, pastikan variabel lingkungan API_KEY sudah diset.");
   }
 };
 
 export const generateCombinedImage = async (modelBase64: string, productBase64: string): Promise<string> => {
   return callWithRetry(async () => {
+    // Fix: Use process.env.API_KEY directly and instantiate before call
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: PRO_MODEL,
@@ -95,6 +91,7 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
 
 export const refineAndCustomize = async (image: string, background: string, backgroundRef: string, lightingRef: string, neonText: string, fontStyle: string): Promise<string> => {
   return callWithRetry(async () => {
+    // Fix: Use process.env.API_KEY directly
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: PRO_MODEL,
@@ -123,6 +120,7 @@ export const refineAndCustomize = async (image: string, background: string, back
 
 export const generateStoryboardGrid = async (baseImage: string, neonText: string): Promise<string> => {
   return callWithRetry(async () => {
+    // Fix: Use process.env.API_KEY directly
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const storyboardPrompt = `NANO BANANA PRO - 3x3 STORYBOARD TASK:
     Generate a 3x3 vertical grid (9:16 total ratio). Each cell should be a 9:16 vertical pose.
@@ -157,6 +155,7 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
 
 export const extractCell = async (gridImage: string, index: number): Promise<string> => {
   return callWithRetry(async () => {
+    // Fix: Use process.env.API_KEY directly
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const cellPositions = [
       "top-left", "top-center", "top-right",
@@ -196,6 +195,7 @@ export const extractCell = async (gridImage: string, index: number): Promise<str
 
 export const upscaleScene = async (imageBase64: string): Promise<string> => {
   return callWithRetry(async () => {
+    // Fix: Use process.env.API_KEY directly
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: PRO_MODEL,
@@ -218,6 +218,7 @@ export const upscaleScene = async (imageBase64: string): Promise<string> => {
 };
 
 export const generateSceneVideo = async (imageBase64: string, motionPrompt: string): Promise<string> => {
+  // Fix: Use process.env.API_KEY directly and instantiate before call
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   let operation = await ai.models.generateVideos({
     model: VEO_MODEL,
@@ -234,13 +235,17 @@ export const generateSceneVideo = async (imageBase64: string, motionPrompt: stri
   });
 
   while (!operation.done) {
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    operation = await (ai as any).operations.getVideosOperation({ operation: (operation as any).operation });
+    // Fix: Recommended delay for video generation is 10s
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    // Fix: Corrected property access and named parameter
+    operation = await ai.operations.getVideosOperation({ operation: operation });
   }
 
-  const downloadLink = (operation as any).response?.generatedVideos?.[0]?.video?.uri;
+  // Fix: Corrected property access for download link
+  const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
   if (!downloadLink) throw new Error("Video generation failed");
   
+  // Fix: Use process.env.API_KEY for fetch
   const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
   const blob = await response.blob();
   return URL.createObjectURL(blob);
