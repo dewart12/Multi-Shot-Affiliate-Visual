@@ -21,8 +21,7 @@ declare global {
 const App: React.FC = () => {
   const [step, setStep] = useState<AppStep>(AppStep.UPLOAD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [debugLog, setDebugLog] = useState<string>("Checking Environment...");
-  const [hasEnvKey, setHasEnvKey] = useState<boolean>(false);
+  const [hasKey, setHasKey] = useState<boolean>(false);
   
   const [state, setState] = useState<GenerationState>({
     modelImage: null,
@@ -55,26 +54,23 @@ const App: React.FC = () => {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const progressIntervalRef = useRef<number | null>(null);
 
-  // Cek apakah Key sudah ada di terminal/env
   useEffect(() => {
-    const key = process.env.API_KEY;
-    if (key && key !== 'undefined' && key.length > 5) {
-      setHasEnvKey(true);
-      setDebugLog("Status: API Key Active (From Environment)");
-      setError(null);
-    } else {
-      setDebugLog("Status: Waiting for Key (Terminal or Dialog)");
-    }
+    const checkKey = () => {
+      const key = process.env.API_KEY;
+      if (key && key !== 'undefined' && key.length > 5) {
+        setHasKey(true);
+      }
+    };
+    checkKey();
   }, []);
 
   const handleOpenKeyPicker = async () => {
-    setDebugLog("Memicu Dialog Project Google...");
     if (window.aistudio?.openSelectKey) {
-      window.aistudio.openSelectKey();
-      setDebugLog("Dialog Terpicu. Cek popup.");
+      await window.aistudio.openSelectKey();
+      setHasKey(true);
       setError(null);
     } else {
-      setError("Fitur Google AI Studio tidak terdeteksi. Gunakan terminal (EXPORT API_KEY=...).");
+      setError("Setup Manual Diperlukan: Isi API_KEY di file .env atau hardcode di geminiService.ts");
     }
   };
 
@@ -104,20 +100,18 @@ const App: React.FC = () => {
   };
 
   const handleError = (err: any) => {
-    const msg = err.message || "Terjadi kendala teknis.";
-    if (msg.includes("API_KEY_MISSING") || msg.includes("Requested entity was not found")) {
-      setError("API KEY TIDAK TERDETEKSI: Silakan input lewat terminal (EXPORT API_KEY=...) atau klik tombol Hubungkan.");
-      setDebugLog("Status: Key missing (Check your Terminal/Env)");
+    const msg = err.message || "An unexpected error occurred.";
+    if (msg.includes("API_KEY")) {
+      setError("KONFIGURASI KEY DIBUTUHKAN: Periksa instruksi GitHub Anda untuk setup API_KEY.");
     } else {
       setError(msg);
-      setDebugLog("Error API: " + msg);
     }
   };
 
   const startProcessing = async () => {
     if (!state.modelImage || !state.productImage) return;
     setError(null);
-    setLoadingMsg("Menyelaraskan busana (Gemini 3 Pro)...");
+    setLoadingMsg("Processing AI Assets...");
     startProgress();
     try {
       const combined = await generateCombinedImage(state.modelImage, state.productImage, setRetryMsg);
@@ -129,7 +123,7 @@ const App: React.FC = () => {
   const handleRefine = async () => {
     if (!state.combinedImage) return;
     setError(null);
-    setLoadingMsg("Mengonfigurasi detail Pro...");
+    setLoadingMsg("Refining Details...");
     startProgress();
     try {
       const refined = await refineAndCustomize(state.combinedImage, options.background, options.backgroundRef, options.lightingRef, options.neonText, options.fontStyle, setRetryMsg);
@@ -140,7 +134,7 @@ const App: React.FC = () => {
   const goToStoryboard = async () => {
     if (!state.combinedImage) return;
     setError(null);
-    setLoadingMsg("Menyusun Storyboard Pro...");
+    setLoadingMsg("Generating Master Storyboard...");
     startProgress();
     try {
       const grid = await generateStoryboardGrid(state.combinedImage, options.neonText, setRetryMsg);
@@ -155,17 +149,16 @@ const App: React.FC = () => {
     for (let i = 0; i < 9; i++) {
       setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: true } : s) }));
       try {
-        const img = await extractCell(state.storyboardGrid!, i, (msg) => setRetryMsg(`Frame ${i+1}: ${msg}`));
+        const img = await extractCell(state.storyboardGrid!, i, (msg) => setRetryMsg(`Extracting Frame ${i+1}: ${msg}`));
         setState(prev => ({
           ...prev,
           scenes: prev.scenes.map(s => s.id === i ? { ...s, image: img, isExtracting: false } : s),
           extractionProgress: Math.round(((i + 1) / 9) * 100)
         }));
         setRetryMsg('');
-        if (i < 8) await new Promise(r => setTimeout(r, 4000));
+        if (i < 8) await new Promise(r => setTimeout(r, 3000));
       } catch (err: any) {
         handleError(err);
-        setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: false } : s) }));
         break;
       }
     }
@@ -186,154 +179,183 @@ const App: React.FC = () => {
   };
 
   const steps = [
-    { id: AppStep.UPLOAD, label: 'Upload Assets', icon: 'fa-cloud-arrow-up', isUnlocked: true },
-    { id: AppStep.REFINE, label: 'Refine & Text', icon: 'fa-wand-magic-sparkles', isUnlocked: !!state.combinedImage },
-    { id: AppStep.STORYBOARD, label: 'Pro Storyboard', icon: 'fa-border-all', isUnlocked: !!state.storyboardGrid },
-    { id: AppStep.RESULTS, label: 'Final Output', icon: 'fa-film', isUnlocked: state.scenes.some(s => s.image !== null) },
+    { id: AppStep.UPLOAD, label: 'Asset Intake', icon: 'fa-upload', isUnlocked: true },
+    { id: AppStep.REFINE, label: 'AI Customizer', icon: 'fa-sliders', isUnlocked: !!state.combinedImage },
+    { id: AppStep.STORYBOARD, label: 'Master View', icon: 'fa-layer-group', isUnlocked: !!state.storyboardGrid },
+    { id: AppStep.RESULTS, label: 'Final Render', icon: 'fa-circle-check', isUnlocked: state.scenes.some(s => s.image !== null) },
   ];
 
   return (
-    <div className="min-h-screen flex bg-[#0a0a0b] text-zinc-100 relative overflow-hidden">
-      <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-[#0f0f11]/95 backdrop-blur-2xl border-r border-white/5 transition-transform lg:translate-x-0 lg:static flex-shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-8 h-full flex flex-col">
-          <div className="flex items-center gap-4 mb-16">
-            <div className="w-11 h-11 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg cursor-pointer" onClick={() => window.location.reload()}>
-                <i className="fa-solid fa-crown text-white"></i>
-            </div>
-            <span className="text-lg font-black tracking-tighter uppercase leading-tight">Multishot <br/><span className="text-blue-500">Pro Edition</span></span>
+    <div className="min-h-screen flex bg-[#0a0a0b] text-zinc-100 font-sans selection:bg-blue-500/30">
+      <aside className="w-80 bg-[#0f0f11] border-r border-white/5 flex flex-col p-8 z-50">
+        <div className="flex items-center gap-3 mb-20 group cursor-pointer" onClick={() => window.location.reload()}>
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(37,99,235,0.4)] group-hover:scale-105 transition-transform">
+            <i className="fa-solid fa-bolt-lightning text-white text-sm"></i>
           </div>
-          
-          <nav className="space-y-3 flex-1">
-            {steps.map((s) => (
-              <button key={s.id} disabled={!s.isUnlocked} onClick={() => setStep(s.id)} className={`w-full flex items-center gap-5 px-6 py-5 rounded-2xl transition-all border text-left ${step === s.id ? 'bg-blue-600/10 text-blue-400 border-blue-500/20' : 'text-zinc-500 border-transparent hover:bg-white/5'} ${!s.isUnlocked ? 'opacity-30 cursor-not-allowed' : ''}`}>
-                <i className={`fa-solid ${s.isUnlocked ? s.icon : 'fa-lock'}`}></i>
-                <span className="font-bold text-xs uppercase tracking-widest">{s.label}</span>
-              </button>
-            ))}
-          </nav>
+          <span className="text-sm font-black tracking-widest uppercase">Multishot <span className="text-blue-500">Pro</span></span>
+        </div>
 
-          <div className="pt-8 border-t border-white/5 space-y-4">
-             <div className="p-4 bg-black/40 rounded-xl border border-white/5 shadow-inner">
-                <p className="text-[8px] font-black uppercase text-zinc-600 mb-2 tracking-[0.2em]">Environment Console</p>
-                <p className={`text-[9px] font-mono truncate ${hasEnvKey ? 'text-green-400' : 'text-blue-400/70'}`}>{debugLog}</p>
-             </div>
-             <button onClick={handleOpenKeyPicker} className="w-full py-5 text-[11px] font-black text-white bg-blue-600 hover:bg-blue-500 uppercase tracking-widest rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95">
-                <i className="fa-solid fa-link"></i> Hubungkan Project
-             </button>
+        <nav className="flex-1 space-y-2">
+          {steps.map((s) => (
+            <button key={s.id} disabled={!s.isUnlocked} onClick={() => setStep(s.id)} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all text-left group ${step === s.id ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-zinc-500 hover:bg-white/5'} ${!s.isUnlocked ? 'opacity-30 cursor-not-allowed' : ''}`}>
+              <i className={`fa-solid ${s.icon} text-xs ${step === s.id ? 'text-blue-400' : 'text-zinc-600'}`}></i>
+              <span className="font-bold text-[10px] uppercase tracking-[0.2em]">{s.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="mt-auto space-y-4">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-black/40 border border-white/5">
+             <div className={`w-2 h-2 rounded-full ${hasKey ? 'bg-green-500' : 'bg-zinc-700 animate-pulse'}`}></div>
+             <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{hasKey ? 'API Connected' : 'Setup Required'}</span>
           </div>
+          <button onClick={handleOpenKeyPicker} className="w-full py-4 text-[10px] font-black text-white bg-zinc-800 hover:bg-zinc-700 uppercase tracking-widest rounded-2xl transition-all shadow-xl active:scale-95 border border-white/5">
+            Manual Key Config
+          </button>
         </div>
       </aside>
 
-      <main className="flex-1 relative overflow-y-auto p-6 sm:p-14 min-w-0 bg-[#0a0a0b] h-screen">
+      <main className="flex-1 relative overflow-y-auto bg-[#0a0a0b]">
         {(loadingMsg || retryMsg) && (
-          <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/98 backdrop-blur-2xl px-6">
-            <div className="relative w-24 h-24 mb-10">
-              <div className="absolute inset-0 border-4 border-blue-500/10 rounded-full"></div>
-              <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <div className="absolute inset-0 flex items-center justify-center font-black text-xl text-blue-400">{Math.floor(loadingProgress)}%</div>
+          <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/95 backdrop-blur-3xl">
+            <div className="relative w-32 h-32 mb-8">
+              <svg className="w-full h-full transform -rotate-90">
+                <circle cx="64" cy="64" r="50" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-zinc-900" />
+                <circle cx="64" cy="64" r="50" stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray="314.159" strokeDashoffset={314.159 - (loadingProgress / 100) * 314.159} className="text-blue-500 transition-all duration-300" strokeLinecap="round" />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center font-black text-xl text-white">{Math.floor(loadingProgress)}%</div>
             </div>
-            <p className="text-2xl font-black gradient-text uppercase tracking-tighter mb-4 text-center">{loadingMsg || 'Sabar dulu bos...'}</p>
-            {retryMsg && <p className="text-blue-400/80 text-[11px] font-black uppercase tracking-[0.2em] animate-pulse bg-blue-500/5 px-6 py-2 rounded-full border border-blue-500/10">{retryMsg}</p>}
+            <p className="text-xl font-black uppercase tracking-[0.3em] text-white mb-2">{loadingMsg || 'Syncing...'}</p>
+            <p className="text-[10px] font-black text-blue-500/60 uppercase tracking-[0.5em] animate-pulse">{retryMsg || 'Initializing GenAI Subsystems'}</p>
           </div>
         )}
 
-        <div className="max-w-[1400px] mx-auto pb-32">
-          {error && !hasEnvKey && (
-            <div className="mb-8 p-8 bg-red-600/10 border border-red-500/20 text-red-400 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-6 animate-up">
-              <div className="flex items-center gap-5">
-                <div className="w-14 h-14 bg-red-500/20 rounded-2xl flex items-center justify-center text-2xl shadow-inner"><i className="fa-solid fa-key"></i></div>
-                <div>
-                    <p className="text-sm font-black uppercase tracking-tighter mb-1 leading-none">{error}</p>
-                    <p className="text-[10px] font-medium opacity-60 uppercase tracking-widest leading-relaxed">Cek variabel environment di terminal Anda atau pilih project melalui tombol.</p>
-                </div>
+        <div className="max-w-6xl mx-auto px-10 py-20">
+          {error && (
+            <div className="mb-12 p-8 bg-blue-600/5 border border-blue-500/20 rounded-[2.5rem] flex items-center gap-6 animate-up">
+              <div className="w-12 h-12 bg-blue-500/20 rounded-2xl flex items-center justify-center text-blue-400"><i className="fa-solid fa-circle-info"></i></div>
+              <div className="flex-1">
+                <p className="text-xs font-black uppercase tracking-widest text-blue-400 mb-1">{error}</p>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Follow the manual setup guide in the repository to link your Gemini API Key.</p>
               </div>
-              <div className="flex gap-4">
-                <button onClick={handleOpenKeyPicker} className="px-10 py-5 bg-white text-black rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-zinc-200 transition-all shadow-xl active:scale-95">HUBUNGKAN</button>
-              </div>
+              {!hasKey && (
+                <button onClick={handleOpenKeyPicker} className="px-8 py-4 bg-white text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-200 transition-all">Setup Key</button>
+              )}
             </div>
           )}
 
           {step === AppStep.UPLOAD && (
             <div className="grid lg:grid-cols-2 gap-10 animate-up">
-              {[ {t: 'Subject Model', d: 'model'}, {t: 'Product Asset', d: 'product'} ].map((u) => (
-                <div key={u.d} className="glass p-12 rounded-[3.5rem] flex flex-col items-center text-center">
-                  <h3 className="text-2xl font-black mb-10 uppercase tracking-tighter gradient-text">{u.t}</h3>
-                  <label className="w-full h-[450px] border-2 border-dashed border-zinc-800/50 hover:border-blue-500/50 rounded-[3rem] flex flex-col items-center justify-center cursor-pointer overflow-hidden relative group transition-all bg-black/20">
-                    {(state as any)[`${u.d}Image`] ? <img src={(state as any)[`${u.d}Image`]} className="w-full h-full object-contain p-10" alt={u.t} /> : <div className="flex flex-col items-center opacity-30 group-hover:opacity-100 transition-opacity"><i className="fa-solid fa-cloud-arrow-up text-5xl mb-6 text-blue-500"></i><span className="text-xs font-black uppercase tracking-[0.3em]">Klik atau Tarik File</span></div>}
+              {[ {t: 'Model Subject', d: 'model', icon: 'fa-user-tie'}, {t: 'Product Asset', d: 'product', icon: 'fa-bag-shopping'} ].map((u) => (
+                <div key={u.d} className="bg-[#0f0f11] p-10 rounded-[3rem] border border-white/5 group">
+                  <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-sm font-black uppercase tracking-widest text-zinc-400">{u.t}</h3>
+                    <i className={`fa-solid ${u.icon} text-zinc-800 text-xl group-hover:text-blue-500 transition-colors`}></i>
+                  </div>
+                  <label className="w-full h-[400px] border-2 border-dashed border-zinc-900 hover:border-blue-500/30 rounded-[2.5rem] flex flex-col items-center justify-center cursor-pointer overflow-hidden transition-all bg-black/20 hover:bg-blue-500/5">
+                    {(state as any)[`${u.d}Image`] ? 
+                      <img src={(state as any)[`${u.d}Image`]} className="w-full h-full object-contain p-8" alt={u.t} /> : 
+                      <div className="text-center">
+                        <i className="fa-solid fa-plus-circle text-3xl mb-4 text-zinc-800 group-hover:text-blue-500/50"></i>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600">Drag or Click Asset</p>
+                      </div>
+                    }
                     <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, u.d as any)} />
                   </label>
                 </div>
               ))}
-              <div className="lg:col-span-2 flex justify-center pt-10">
-                <button disabled={!state.modelImage || !state.productImage} onClick={startProcessing} className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:opacity-50 px-24 py-8 rounded-[2.5rem] font-black uppercase tracking-[0.4em] text-sm shadow-2xl transition-all active:scale-95">Mulai Produksi Pro</button>
+              <div className="lg:col-span-2 flex justify-center mt-12">
+                <button disabled={!state.modelImage || !state.productImage} onClick={startProcessing} className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-900 disabled:text-zinc-700 px-20 py-7 rounded-full font-black uppercase tracking-[0.3em] text-xs shadow-[0_15px_40px_rgba(37,99,235,0.2)] transition-all active:scale-95">Start Production Flow</button>
               </div>
             </div>
           )}
 
           {step === AppStep.REFINE && state.combinedImage && (
             <div className="grid lg:grid-cols-2 gap-16 animate-up">
-              <div className="glass p-5 rounded-[4rem] sticky top-14 self-start shadow-2xl border-white/10"><img src={state.combinedImage} className="w-full rounded-[3.5rem] aspect-[9/16] object-contain bg-black/50" /></div>
-              <div className="space-y-12 py-6">
-                <h2 className="text-5xl font-black tracking-tighter uppercase leading-none">Kustomisasi <br/><span className="text-blue-500">Ruang (Pro)</span></h2>
-                <div className="glass p-10 rounded-[3rem] space-y-10 border-white/5 bg-white/[0.02]">
-                  <div><label className="block text-[11px] font-black text-zinc-500 uppercase mb-4 tracking-widest">Prompt Lingkungan</label><textarea value={options.background} onChange={(e) => setOptions(o => ({...o, background: e.target.value}))} className="w-full bg-black/60 border border-white/10 rounded-3xl p-6 text-xs h-40 resize-none outline-none focus:border-blue-500/50 font-medium" /></div>
-                  <div><label className="block text-[11px] font-black text-blue-500 uppercase mb-4 tracking-widest">Nama Brand (Neon)</label><input type="text" value={options.neonText} onChange={(e) => setOptions(o => ({...o, neonText: e.target.value}))} className="w-full bg-black/60 border border-white/10 rounded-2xl px-6 py-5 text-sm font-black uppercase tracking-[0.2em] outline-none" /></div>
+              <div className="bg-[#0f0f11] p-4 rounded-[3.5rem] border border-white/5 sticky top-10 shadow-2xl">
+                <img src={state.combinedImage} className="w-full rounded-[3rem] aspect-[9/16] object-cover bg-black" />
+              </div>
+              <div className="space-y-10 py-6">
+                <div className="space-y-2">
+                  <h2 className="text-4xl font-black tracking-tighter uppercase leading-none">Studio <br/><span className="text-blue-500">Mastering</span></h2>
+                  <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.5em]">Phase 02 / Refinement</p>
                 </div>
-                <div className="flex flex-col gap-5 pt-4">
-                  <button onClick={handleRefine} className="py-6 rounded-3xl border border-white/10 hover:bg-white/5 font-black text-[11px] uppercase tracking-widest transition-all">Perbarui Preview</button>
-                  <button onClick={goToStoryboard} className="py-8 rounded-[3rem] bg-blue-600 hover:bg-blue-500 font-black uppercase tracking-[0.4em] shadow-2xl transition-all active:scale-95 shadow-blue-600/30">Rancang Storyboard</button>
+                
+                <div className="space-y-8 bg-[#0f0f11] p-10 rounded-[2.5rem] border border-white/5">
+                  <div className="space-y-4">
+                    <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest">Environment Script</label>
+                    <textarea value={options.background} onChange={(e) => setOptions(o => ({...o, background: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-2xl p-6 text-xs h-32 resize-none outline-none focus:border-blue-500/20 font-medium transition-all" />
+                  </div>
+                  <div className="space-y-4">
+                    <label className="block text-[10px] font-black text-blue-500 uppercase tracking-widest">Neon Identity</label>
+                    <input type="text" value={options.neonText} onChange={(e) => setOptions(o => ({...o, neonText: e.target.value}))} className="w-full bg-black/40 border border-white/5 rounded-2xl px-6 py-4 text-sm font-black uppercase tracking-widest outline-none focus:border-blue-500/20" />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <button onClick={handleRefine} className="py-5 rounded-2xl border border-white/5 hover:bg-white/5 font-black text-[10px] uppercase tracking-widest transition-all">Refresh Preview</button>
+                  <button onClick={goToStoryboard} className="py-7 rounded-full bg-blue-600 hover:bg-blue-500 font-black uppercase tracking-[0.3em] text-xs shadow-2xl transition-all active:scale-95">Commit Storyboard</button>
                 </div>
               </div>
             </div>
           )}
 
           {step === AppStep.STORYBOARD && state.storyboardGrid && (
-            <div className="max-w-4xl mx-auto flex flex-col items-center animate-up">
-              <h2 className="text-5xl font-black tracking-tighter uppercase leading-none mb-16 text-center">Master <span className="text-blue-500">Montage</span></h2>
-              <div className="glass p-6 rounded-[4.5rem] mb-16 shadow-2xl border-white/10"><img src={state.storyboardGrid} className="w-full rounded-[3.5rem] aspect-[9/16] object-contain shadow-2xl" /></div>
-              <button onClick={startExtraction} className="bg-blue-600 hover:bg-blue-500 px-32 py-10 rounded-[3.5rem] font-black text-xl uppercase tracking-[0.4em] shadow-2xl transition-all active:scale-95 shadow-blue-600/30">Mulai Ekstraksi</button>
+            <div className="max-w-3xl mx-auto flex flex-col items-center animate-up">
+              <div className="text-center mb-16 space-y-4">
+                <h2 className="text-5xl font-black tracking-tighter uppercase">Master <span className="text-blue-500">Grid</span></h2>
+                <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[1em]">Seamless 3x3 Composition</p>
+              </div>
+              <div className="bg-[#0f0f11] p-4 rounded-[4rem] mb-12 border border-white/5 shadow-2xl">
+                <img src={state.storyboardGrid} className="w-full rounded-[3.5rem] aspect-[9/16] object-cover shadow-2xl" />
+              </div>
+              <button onClick={startExtraction} className="bg-blue-600 hover:bg-blue-500 px-24 py-8 rounded-full font-black text-xs uppercase tracking-[0.4em] shadow-2xl transition-all active:scale-95">Initiate Extraction</button>
             </div>
           )}
 
           {step === AppStep.RESULTS && (
             <div className="space-y-16 animate-up">
-              <div className="flex flex-col md:flex-row justify-between items-end gap-6 px-6">
-                <div><h2 className="text-5xl font-black tracking-tighter mb-2 uppercase leading-none">Final <span className="text-blue-500">Assets</span></h2><p className="text-[11px] font-black text-zinc-600 uppercase tracking-[0.5em]">Commercial Ready Output</p></div>
-                <div className="text-right glass px-8 py-5 rounded-3xl border-white/5">
-                  <p className="text-[10px] font-black text-blue-500 uppercase mb-3 tracking-widest">Progress</p>
-                  <div className="w-64 h-1.5 bg-zinc-900 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-blue-600 transition-all duration-1000 shadow-[0_0_15px_rgba(59,130,246,0.5)]" style={{ width: `${state.extractionProgress}%` }}></div></div>
+              <div className="flex justify-between items-end gap-6 px-4">
+                <div className="space-y-2">
+                  <h2 className="text-5xl font-black tracking-tighter uppercase leading-none">Output <br/><span className="text-blue-500">Vault</span></h2>
+                  <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.5em]">Individual Assets Generation</p>
+                </div>
+                <div className="text-right space-y-3">
+                  <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Master Progress</span>
+                  <div className="w-48 h-1 bg-zinc-900 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${state.extractionProgress}%` }}></div>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid lg:grid-cols-4 gap-12">
-                <div className="lg:col-span-1"><div className="glass p-5 rounded-[3.5rem] sticky top-10 border-blue-500/10 shadow-2xl"><img src={state.storyboardGrid || ''} className="w-full rounded-[2.5rem] aspect-[9/16] object-contain shadow-2xl bg-black/40" /></div></div>
-                <div className="lg:col-span-3 grid md:grid-cols-3 gap-8">
-                  {state.scenes.map((scene, idx) => (
-                    <div key={scene.id} className="glass p-6 rounded-[3.5rem] flex flex-col h-full group border-white/5 bg-white/[0.01]">
-                      <div className="aspect-[9/16] bg-black/60 rounded-[2.5rem] overflow-hidden relative mb-8 border border-white/5 shadow-inner">
-                        {scene.image ? (
-                          <>
-                            {scene.videoUrl ? <video src={scene.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline /> : <img src={scene.image} className="w-full h-full object-cover" />}
-                            <div className="absolute top-6 right-6 flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-all"><a href={scene.videoUrl || scene.image} download className="w-12 h-12 bg-white text-black rounded-2xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all transform hover:scale-110"><i className="fa-solid fa-download"></i></a></div>
-                            <div className="absolute bottom-6 left-6 bg-black/70 backdrop-blur-md px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border border-white/10">Scene {idx+1}</div>
-                          </>
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-black/40">
-                            {scene.isExtracting ? <div className="w-10 h-10 border-4 border-blue-500/10 border-t-blue-500 rounded-full animate-spin"></div> : <i className="fa-solid fa-hourglass opacity-10 text-4xl"></i>}
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {state.scenes.map((scene, idx) => (
+                  <div key={scene.id} className="bg-[#0f0f11] p-6 rounded-[3rem] border border-white/5 flex flex-col group">
+                    <div className="aspect-[9/16] bg-black rounded-[2rem] overflow-hidden relative mb-6 border border-white/5">
+                      {scene.image ? (
+                        <>
+                          {scene.videoUrl ? <video src={scene.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline /> : <img src={scene.image} className="w-full h-full object-cover" />}
+                          <div className="absolute top-4 right-4 flex flex-col gap-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all">
+                            <a href={scene.videoUrl || scene.image} download className="w-10 h-10 bg-white text-black rounded-xl flex items-center justify-center shadow-2xl hover:bg-blue-600 hover:text-white transition-all"><i className="fa-solid fa-download text-xs"></i></a>
                           </div>
-                        )}
-                      </div>
-                      {scene.image && !scene.videoUrl && (
-                        <div className="mt-auto space-y-4">
-                          <textarea placeholder="Motion prompt..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-[11px] h-20 resize-none outline-none font-medium leading-relaxed" />
-                          <button disabled={scene.isGeneratingVideo} onClick={() => handleGenerateVideo(scene.id)} className="w-full py-4 rounded-2xl bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-lg active:scale-95">
-                            {scene.isGeneratingVideo ? <><i className="fa-solid fa-spinner fa-spin mr-2"></i> Rendering</> : <><i className="fa-solid fa-video mr-2"></i> Render Motion</>}
-                          </button>
+                          <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest border border-white/5">Scene {idx+1}</div>
+                        </>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          {scene.isExtracting ? <div className="w-8 h-8 border-3 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div> : <i className="fa-solid fa-hourglass-start opacity-10 text-3xl"></i>}
                         </div>
                       )}
                     </div>
-                  ))}
-                </div>
+                    {scene.image && !scene.videoUrl && (
+                      <div className="space-y-4">
+                        <textarea placeholder="Motion Prompt..." value={scenePrompts[idx]} onChange={(e) => { const n = [...scenePrompts]; n[idx] = e.target.value; setScenePrompts(n); }} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-[10px] h-20 resize-none outline-none font-medium leading-relaxed focus:border-blue-500/20" />
+                        <button disabled={scene.isGeneratingVideo} onClick={() => handleGenerateVideo(scene.id)} className="w-full py-4 rounded-xl bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 text-[9px] font-black uppercase tracking-[0.2em] transition-all">
+                          {scene.isGeneratingVideo ? 'Rendering...' : 'Render Motion'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}

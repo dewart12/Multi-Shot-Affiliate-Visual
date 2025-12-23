@@ -1,24 +1,39 @@
 import { GoogleGenAI } from "@google/genai";
 
+/**
+ * PENTING UNTUK USER GITHUB:
+ * Secara default, aplikasi ini mengambil API Key dari environment variable (process.env.API_KEY).
+ * Jika Anda ingin memasukkan KEY secara manual (Hardcode), ganti baris di bawah ini:
+ * const getApiKey = () => "ISI_KEY_LU_DI_SINI";
+ */
+const getApiKey = () => process.env.API_KEY || "";
+
 const PRO_IMAGE_MODEL = 'gemini-3-pro-image-preview';
 const VEO_MODEL = 'veo-3.1-fast-generate-preview';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function callWithRetry<T>(fn: () => Promise<T>, onRetry?: (msg: string) => void, maxRetries = 5): Promise<T> {
+async function callWithRetry<T>(fn: (ai: any) => Promise<T>, onRetry?: (msg: string) => void, maxRetries = 5): Promise<T> {
   let lastError: any;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      return await fn();
+      // Selalu inisialisasi instance baru untuk memastikan Key terbaru yang diambil
+      const apiKey = getApiKey();
+      if (!apiKey) throw new Error("API_KEY_MISSING");
+      
+      const ai = new GoogleGenAI({ apiKey });
+      return await fn(ai);
     } catch (error: any) {
       lastError = error;
       const errorStr = (error.message || "").toLowerCase();
-      if (errorStr.includes("not found") || errorStr.includes("api_key_missing")) {
-        throw new Error("API_KEY_MISSING");
+      
+      if (errorStr.includes("not found") || errorStr.includes("api_key_missing") || errorStr.includes("401")) {
+        throw new Error("API_KEY_INVALID_OR_MISSING");
       }
+      
       if (errorStr.includes("429") || errorStr.includes("resource_exhausted") || errorStr.includes("500") || errorStr.includes("503")) {
         const waitTime = (attempt + 1) * 12000; 
-        if (onRetry) onRetry(`Server Padat. Antri ulang (${waitTime/1000}s)...`);
+        if (onRetry) onRetry(`Server Busy. Retrying in ${waitTime/1000}s...`);
         await sleep(waitTime);
         continue;
       }
@@ -29,9 +44,7 @@ async function callWithRetry<T>(fn: () => Promise<T>, onRetry?: (msg: string) =>
 }
 
 export const generateCombinedImage = async (modelBase64: string, productBase64: string, onStatus?: (s: string) => void): Promise<string> => {
-  return callWithRetry(async () => {
-    // Selalu inisialisasi di dalam fungsi untuk ambil key TERBARU
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return callWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
       contents: {
@@ -51,8 +64,7 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
 };
 
 export const refineAndCustomize = async (image: string, background: string, backgroundRef: string, lightingRef: string, neonText: string, fontStyle: string, onStatus?: (s: string) => void): Promise<string> => {
-  return callWithRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return callWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
       contents: {
@@ -71,8 +83,7 @@ export const refineAndCustomize = async (image: string, background: string, back
 };
 
 export const generateStoryboardGrid = async (baseImage: string, neonText: string, onStatus?: (s: string) => void): Promise<string> => {
-  return callWithRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return callWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
       contents: {
@@ -91,8 +102,7 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
 };
 
 export const extractCell = async (gridImage: string, index: number, onStatus?: (s: string) => void): Promise<string> => {
-  return callWithRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return callWithRetry(async (ai) => {
     const pos = ["top-left", "top-center", "top-right", "middle-left", "center", "middle-right", "bottom-left", "bottom-center", "bottom-right"];
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
@@ -112,7 +122,10 @@ export const extractCell = async (gridImage: string, index: number, onStatus?: (
 };
 
 export const generateSceneVideo = async (imageBase64: string, motionPrompt: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Video generation model call
+  const apiKey = getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
+  
   let operation = await ai.models.generateVideos({
     model: VEO_MODEL,
     prompt: motionPrompt,
@@ -126,7 +139,7 @@ export const generateSceneVideo = async (imageBase64: string, motionPrompt: stri
   }
 
   const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-  const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+  const response = await fetch(`${downloadLink}&key=${apiKey}`);
   if (!response.ok) throw new Error("Gagal mengunduh video.");
   const blob = await response.blob();
   return URL.createObjectURL(blob);
