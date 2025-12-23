@@ -9,7 +9,7 @@ import { GoogleGenAI } from "@google/genai";
  * GEMINI_API_KEY=AIzaSy... (Masukan Key Anda)
  */
 const getApiKey = () => {
-  return process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+  return process.env.GEMINI_API_KEY || process.env.API_KEY || "AIzaSyAhsMqPWuM7RSBRc-HK1z_3FxglWkH0piM";
 };
 
 // Menggunakan model IMAGE PRO agar mendukung Aspect Ratio dan Image Size
