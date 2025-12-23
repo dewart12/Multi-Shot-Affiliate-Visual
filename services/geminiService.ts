@@ -2,13 +2,19 @@ import { GoogleGenAI } from "@google/genai";
 
 /**
  * PENTING UNTUK USER GITHUB:
- * Secara default, aplikasi ini mengambil API Key dari environment variable (process.env.API_KEY).
- * Jika Anda ingin memasukkan KEY secara manual (Hardcode), ganti baris di bawah ini:
- * const getApiKey = () => "AIzaSyAhsMqPWuM7RSBRc-HK1z_3FxglWkH0piM";
+ * File .env atau .env.local TIDAK AKAN ADA di GitHub karena alasan keamanan (rahasia).
+ * Anda harus MEMBUAT SENDIRI file tersebut di root folder project Anda.
+ * 
+ * Isi file .env.local:
+ * GEMINI_API_KEY=AIzaSy... (Masukan Key Anda)
  */
-const getApiKey = () => process.env.API_KEY || "AIzaSyAhsMqPWuM7RSBRc-HK1z_3FxglWkH0piM";
+const getApiKey = () => {
+  // Prioritas ke GEMINI_API_KEY sesuai standar deployment AI Studio
+  return process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+};
 
-const PRO_IMAGE_MODEL = 'gemini-3-pro-image-preview';
+// Menggunakan Gemini 3 Pro sesuai request untuk stabilitas lebih baik
+const PRO_MODEL = 'gemini-3-pro-preview';
 const VEO_MODEL = 'veo-3.1-fast-generate-preview';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -17,7 +23,6 @@ async function callWithRetry<T>(fn: (ai: any) => Promise<T>, onRetry?: (msg: str
   let lastError: any;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      // Selalu inisialisasi instance baru untuk memastikan Key terbaru yang diambil
       const apiKey = getApiKey();
       if (!apiKey) throw new Error("API_KEY_MISSING");
       
@@ -46,7 +51,7 @@ async function callWithRetry<T>(fn: (ai: any) => Promise<T>, onRetry?: (msg: str
 export const generateCombinedImage = async (modelBase64: string, productBase64: string, onStatus?: (s: string) => void): Promise<string> => {
   return callWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
-      model: PRO_IMAGE_MODEL,
+      model: PRO_MODEL,
       contents: {
         parts: [
           { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } },
@@ -54,50 +59,59 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
           { text: `TASK: ABSOLUTE PIXEL-PERFECT CLOTHING SWAP. Use model face/pose, swap clothes with product image. 100% fidelity. 1K resolution. Aspect 9:16.` }
         ]
       },
-      config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
+      config: { 
+        imageConfig: { aspectRatio: "9:16", imageSize: "1K" },
+        seed: 42 // Mengunci hasil agar lebih konsisten
+      }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal menyatukan aset Pro.");
+    throw new Error("Gagal menyatukan aset.");
   }, onStatus);
 };
 
 export const refineAndCustomize = async (image: string, background: string, backgroundRef: string, lightingRef: string, neonText: string, fontStyle: string, onStatus?: (s: string) => void): Promise<string> => {
   return callWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
-      model: PRO_IMAGE_MODEL,
+      model: PRO_MODEL,
       contents: {
         parts: [
           { inlineData: { data: image.split(',')[1], mimeType: 'image/png' } },
           { text: `Change ONLY background to ${background}. Lighting: ${lightingRef}. Add branding neon sign: "${neonText}". Aspect 9:16. 1K resolution.` }
         ]
       },
-      config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
+      config: { 
+        imageConfig: { aspectRatio: "9:16", imageSize: "1K" },
+        seed: 42
+      }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal memproses detail Pro.");
+    throw new Error("Gagal memproses detail.");
   }, onStatus);
 };
 
 export const generateStoryboardGrid = async (baseImage: string, neonText: string, onStatus?: (s: string) => void): Promise<string> => {
   return callWithRetry(async (ai) => {
     const response = await ai.models.generateContent({
-      model: PRO_IMAGE_MODEL,
+      model: PRO_MODEL,
       contents: {
         parts: [
           { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
           { text: `PREMIUM FASHION STORYBOARD (3x3 SEAMLESS GRID): 9 DIFFERENT scenes of SAME character with neon branding "${neonText}". Aspect 9:16. 1K Resolution.` }
         ]
       },
-      config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
+      config: { 
+        imageConfig: { aspectRatio: "9:16", imageSize: "1K" },
+        seed: 42
+      }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal membuat storyboard Pro.");
+    throw new Error("Gagal membuat storyboard.");
   }, onStatus);
 };
 
@@ -105,24 +119,26 @@ export const extractCell = async (gridImage: string, index: number, onStatus?: (
   return callWithRetry(async (ai) => {
     const pos = ["top-left", "top-center", "top-right", "middle-left", "center", "middle-right", "bottom-left", "bottom-center", "bottom-right"];
     const response = await ai.models.generateContent({
-      model: PRO_IMAGE_MODEL,
+      model: PRO_MODEL,
       contents: {
         parts: [
           { inlineData: { data: gridImage.split(',')[1], mimeType: 'image/png' } },
           { text: `Crop and extract ONLY the ${pos[index]} frame from this montage. Output single 9:16 portrait. 1K quality.` }
         ]
       },
-      config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
+      config: { 
+        imageConfig: { aspectRatio: "9:16", imageSize: "1K" },
+        seed: 42
+      }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error("Gagal mengekstrak frame Pro.");
+    throw new Error("Gagal mengekstrak frame.");
   }, onStatus);
 };
 
 export const generateSceneVideo = async (imageBase64: string, motionPrompt: string): Promise<string> => {
-  // Video generation model call
   const apiKey = getApiKey();
   const ai = new GoogleGenAI({ apiKey });
   
