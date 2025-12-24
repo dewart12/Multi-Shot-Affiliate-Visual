@@ -15,6 +15,24 @@ const getEffectiveApiKey = (): string => {
   return process.env.API_KEY as string;
 };
 
+// --- NEW: VALIDATION FUNCTION ---
+export const validateApiKey = async (apiKey: string): Promise<boolean> => {
+  if (!apiKey) return false;
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    // Perform a lightweight "ping" to check if the key is valid.
+    // We use a cheap text model just to verify authentication.
+    await ai.models.generateContent({
+      model: 'gemini-2.5-flash-latest',
+      contents: { parts: [{ text: 'Ping' }] },
+    });
+    return true;
+  } catch (error) {
+    console.error("API Key Validation Failed:", error);
+    return false;
+  }
+};
+
 async function callWithRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>, maxRetries = 3): Promise<T> {
   let lastError: any;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -50,7 +68,6 @@ async function callWithRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>, maxRetries 
 }
 
 // --- MANUAL CROP FUNCTION (Client-Side Canvas) ---
-// This guarantees a single image is extracted based on coordinates, preventing AI hallucinations.
 const cropImageLocally = (base64Image: string, index: number): Promise<string> => {
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined') {
@@ -68,14 +85,13 @@ const cropImageLocally = (base64Image: string, index: number): Promise<string> =
       const pieceWidth = img.width / cols;
       const pieceHeight = img.height / rows;
 
-      // Padding logic: Crop slightly inside (10px) to avoid getting grid lines
+      // Padding logic
       const padding = 10; 
 
       const colIndex = index % cols;
       const rowIndex = Math.floor(index / cols);
 
       const canvas = document.createElement('canvas');
-      // Set target to High Res Vertical (9:16) for the final shot
       canvas.width = 1024; 
       canvas.height = 1792; 
       const ctx = canvas.getContext('2d');
@@ -88,17 +104,15 @@ const cropImageLocally = (base64Image: string, index: number): Promise<string> =
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
 
-      // Source coordinates from the grid
       const sourceX = (colIndex * pieceWidth) + padding;
       const sourceY = (rowIndex * pieceHeight) + padding;
       const sourceW = pieceWidth - (padding * 2);
       const sourceH = pieceHeight - (padding * 2);
 
-      // Draw the cropped portion stretched to the full HD canvas
       ctx.drawImage(
         img,
-        sourceX, sourceY, sourceW, sourceH,  // Source crop
-        0, 0, canvas.width, canvas.height    // Destination full size
+        sourceX, sourceY, sourceW, sourceH, 
+        0, 0, canvas.width, canvas.height
       );
 
       resolve(canvas.toDataURL('image/png'));
@@ -204,11 +218,8 @@ export const generateStoryboardGrid = async (baseImage: string, text: string, st
 // --- MAIN EXTRACTION LOGIC ---
 export const extractCell = async (gridImage: string, index: number): Promise<string> => {
   try {
-    // STEP 1: Crop Locally (Client-side)
-    // This physically cuts the image so the AI never sees the full grid for the next step.
     const croppedLowRes = await cropImageLocally(gridImage, index);
 
-    // STEP 2: Upscale & Refine with Gemini
     return callWithRetry(async (ai) => {
       const response = await ai.models.generateContent({
         model: PRO_IMAGE_MODEL,
@@ -230,7 +241,6 @@ export const extractCell = async (gridImage: string, index: number): Promise<str
       for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
       }
-      // Fallback: return the cropped image if AI fails
       return croppedLowRes; 
     });
 

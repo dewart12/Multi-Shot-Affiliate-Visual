@@ -9,7 +9,8 @@ import {
   extractCell,
   generateSceneVideo,
   upscaleScene,
-  repairImage
+  repairImage,
+  validateApiKey // Import the new validation function
 } from './services/geminiService.ts';
 
 // --- COMPONENTS ---
@@ -71,13 +72,15 @@ const SciFiProgressBar: React.FC<{ progress: number }> = ({ progress }) => {
 
 const App: React.FC = () => {
   const [step, setStep] = useState<AppStep>(AppStep.UPLOAD);
-  const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
+  const [showKeyModal, setShowKeyModal] = useState<boolean>(true); // Default true to force check
   const [loadingMsg, setLoadingMsg] = useState('');
   const [quotaError, setQuotaError] = useState<string | null>(null);
   const [useCustomKey, setUseCustomKey] = useState<boolean>(false);
   
   // State for the BYOK Input in the modal
   const [tempApiKey, setTempApiKey] = useState('');
+  const [isValidatingKey, setIsValidatingKey] = useState(false);
+  const [keyError, setKeyError] = useState('');
   
   const [state, setState] = useState<GenerationState>({
     modelImage: null,
@@ -107,20 +110,24 @@ const App: React.FC = () => {
   const checkKeys = async () => {
     // Check local BYOK first
     const localKey = localStorage.getItem('USER_GEMINI_API_KEY');
+    
+    // If local key exists, validate it silently
     if (localKey && localKey.length > 5) {
-      setUseCustomKey(true);
-      setShowKeyModal(false);
-      return;
+       // Optional: We can validate silently here or assume it's good. 
+       // For better UX, let's assume it's good if present, but if calls fail later, handleDisconnect.
+       setUseCustomKey(true);
+       setShowKeyModal(false);
+       return;
     }
     
     setUseCustomKey(false);
     
     // Fallback to Env/IDX check
     const aistudio = (window as any).aistudio;
-    if (aistudio && !(await aistudio.hasSelectedApiKey())) {
-      setShowKeyModal(true);
+    if (aistudio && await aistudio.hasSelectedApiKey()) {
+       setShowKeyModal(false);
     } else {
-      setShowKeyModal(false);
+       setShowKeyModal(true);
     }
   };
 
@@ -128,18 +135,33 @@ const App: React.FC = () => {
     checkKeys();
   }, []);
 
-  const handleSaveCustomKey = () => {
-    if (tempApiKey.trim().length > 10) {
-      localStorage.setItem('USER_GEMINI_API_KEY', tempApiKey.trim());
-      checkKeys();
-    } else {
-      alert("Please enter a valid API Key");
+  const handleSaveCustomKey = async () => {
+    setKeyError('');
+    if (tempApiKey.trim().length < 10) {
+      setKeyError("Invalid Key format");
+      return;
     }
+
+    setIsValidatingKey(true);
+    
+    // Perform live validation against Google servers
+    const isValid = await validateApiKey(tempApiKey.trim());
+    
+    if (isValid) {
+      localStorage.setItem('USER_GEMINI_API_KEY', tempApiKey.trim());
+      setUseCustomKey(true);
+      setShowKeyModal(false);
+    } else {
+      setKeyError("Validation Failed. Key invalid or inactive.");
+    }
+    
+    setIsValidatingKey(false);
   };
 
   const handleDisconnect = () => {
       localStorage.removeItem('USER_GEMINI_API_KEY');
-      window.location.reload(); // Reload to reset state fully
+      setUseCustomKey(false);
+      setShowKeyModal(true); // Re-open modal
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'model' | 'product') => {
@@ -159,9 +181,8 @@ const App: React.FC = () => {
       setQuotaError("YOUR API QUOTA IS ZERO. Please upgrade your Google Cloud Project to a PAID plan and enable billing for Gemini 3 Pro & Veo 3.1.");
     } else if (e.message === "API_KEY_INVALID") {
       alert("API Key is invalid or expired. Please re-authenticate.");
-      // Force open modal by clearing key and re-checking
       localStorage.removeItem('USER_GEMINI_API_KEY');
-      checkKeys();
+      setShowKeyModal(true);
     } else {
       alert("Error occurred: " + (e.message || "Unknown error"));
     }
@@ -622,7 +643,7 @@ const App: React.FC = () => {
             
             <div>
               <h2 className="text-xl md:text-2xl font-black uppercase tracking-tighter mb-3 italic">System Access</h2>
-              <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Choose your connection method to initialize production protocols.</p>
+              <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Identity verification required. Connect credentials to initialize.</p>
             </div>
 
             {/* OPTION 1: GOOGLE PROJECT */}
@@ -635,14 +656,11 @@ const App: React.FC = () => {
                     setShowKeyModal(false); 
                     } 
                 }}
-                className="w-full bg-blue-600 py-4 md:py-5 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-[0_10px_30px_rgba(37,99,235,0.4)] hover:bg-blue-500 transition-colors flex items-center justify-center gap-3"
+                className="w-full bg-blue-600/20 border border-blue-600/50 text-blue-400 py-4 md:py-5 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-[0_10px_30px_rgba(37,99,235,0.1)] hover:bg-blue-600/40 transition-colors flex items-center justify-center gap-3"
                 >
                 <i className="fa-brands fa-google"></i>
                 Connect Google Cloud Project
                 </button>
-                <div className="text-[9px] text-zinc-600">
-                    <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="hover:text-blue-500 underline decoration-dashed">Billing Info</a>
-                </div>
             </div>
 
             <div className="relative flex items-center gap-4 opacity-50">
@@ -651,28 +669,37 @@ const App: React.FC = () => {
                <div className="h-px bg-white/10 flex-1"></div>
             </div>
 
-            {/* OPTION 2: CUSTOM KEY (BYOK) */}
+            {/* OPTION 2: CUSTOM KEY (BYOK) - MANUAL INPUT WITH VALIDATION */}
             <div className="space-y-3">
                <div className="flex gap-2">
                  <div className="relative flex-1">
-                    <i className="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 text-xs"></i>
+                    <i className={`fa-solid ${isValidatingKey ? 'fa-circle-notch fa-spin' : 'fa-key'} absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 text-xs`}></i>
                     <input 
                         type="password" 
                         value={tempApiKey}
                         onChange={(e) => setTempApiKey(e.target.value)}
-                        placeholder="Paste Gemini API Key"
-                        className="w-full bg-[#050506] border border-white/10 rounded-xl py-4 pl-10 pr-4 text-[11px] font-mono text-white outline-none focus:border-blue-600/50 transition-colors placeholder:text-zinc-700"
+                        placeholder="Enter API Key"
+                        disabled={isValidatingKey}
+                        className="w-full bg-[#050506] border border-white/10 rounded-xl py-4 pl-10 pr-4 text-[11px] font-mono text-white outline-none focus:border-blue-600/50 transition-colors placeholder:text-zinc-700 disabled:opacity-50"
                     />
                  </div>
                  <button 
                     onClick={handleSaveCustomKey}
-                    className="bg-[#1e1e24] hover:bg-zinc-800 border border-white/5 text-white w-12 rounded-xl flex items-center justify-center transition-colors"
+                    disabled={isValidatingKey || tempApiKey.length < 5}
+                    className="bg-[#1e1e24] hover:bg-blue-600 disabled:opacity-50 border border-white/5 text-white w-12 rounded-xl flex items-center justify-center transition-all duration-300"
                  >
-                    <i className="fa-solid fa-arrow-right text-xs"></i>
+                    <i className={`fa-solid ${isValidatingKey ? 'fa-spinner fa-spin' : 'fa-arrow-right'} text-xs`}></i>
                  </button>
                </div>
+               
+               {keyError && (
+                 <p className="text-[9px] text-red-500 font-bold uppercase tracking-wide animate-in">
+                   {keyError}
+                 </p>
+               )}
+
                <p className="text-[9px] text-zinc-600 uppercase tracking-wide">
-                   Stored locally. <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-zinc-500 hover:text-white underline">Get Key</a>
+                   <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-zinc-500 hover:text-white underline">Get Paid Key</a> for full features.
                </p>
             </div>
 
