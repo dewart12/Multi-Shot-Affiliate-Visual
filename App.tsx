@@ -1,53 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { generateCombinedImage, refineAndCustomize, generateStoryboardGrid, extractCell, generateSceneVideo } from './services/geminiService';
 
-// --- ICON SVG MANUAL (PENGGANTI LUCIDE) ---
-const Icons = {
-  Sparkles: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
-  ),
-  Upload: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-  ),
-  Wand2: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>
-  ),
-  LayoutGrid: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
-  ),
-  Download: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-  ),
-  ArrowRight: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-  ),
-  AlertTriangle: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-  ),
-  Play: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-  ),
-  ChevronRight: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-  ),
-  Menu: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
-  ),
-  X: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 18 12"/></svg>
-  )
-};
-
-// --- KOMPONEN BARU: CyberProgress (Responsif) ---
+// --- KOMPONEN LOADING ---
 const CyberProgress = ({ progress, text }: { progress: number, text: string }) => (
   <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 backdrop-blur-xl px-4">
     <div className="w-full max-w-md p-6 relative">
       <div className="relative bg-gray-900/50 border border-cyan-500/30 rounded-xl p-6 md:p-8 shadow-[0_0_50px_rgba(6,182,212,0.15)] overflow-hidden ring-1 ring-white/5">
-        <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-cyan-400"></div>
-        <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-cyan-400"></div>
-        <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-purple-400"></div>
-        <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-purple-400"></div>
-
         <div className="flex justify-between items-end mb-4">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
@@ -56,14 +14,11 @@ const CyberProgress = ({ progress, text }: { progress: number, text: string }) =
             </span>
           </div>
           <span className="text-white font-mono font-bold text-xl md:text-2xl tabular-nums tracking-tighter">
-            {Math.round(progress)}<span className="text-sm text-gray-500 ml-1">%</span>
+            {Math.round(progress)}%
           </span>
         </div>
-
         <div className="h-2 bg-gray-800 rounded-full overflow-hidden border border-white/10 relative shadow-inner">
-           <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_50%,rgba(255,255,255,0.03)_50%)] bg-[length:4px_100%]"></div>
-           <div className="h-full bg-gradient-to-r from-cyan-600 via-blue-500 to-purple-600 transition-all duration-300 ease-out relative shadow-[0_0_15px_rgba(6,182,212,0.5)]" style={{ width: `${progress}%` }}>
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent w-full animate-[shimmer_2s_infinite]"></div>
+           <div className="h-full bg-gradient-to-r from-cyan-600 via-blue-500 to-purple-600 transition-all duration-300 ease-out relative" style={{ width: `${progress}%` }}>
           </div>
         </div>
       </div>
@@ -98,6 +53,7 @@ function App() {
   const [quotaError, setQuotaError] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Helper convert file
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -135,7 +91,7 @@ function App() {
   const handleCombineAssets = async () => {
     if (!modelImage || !productImage) return;
     setIsProcessing(true);
-    setLoadingMsg("Analisis AI & Penggabungan Aset...");
+    setLoadingMsg("Menggabungkan Aset...");
     setQuotaError(null);
     const progressInterval = startProgressSimulation();
 
@@ -157,8 +113,7 @@ function App() {
   const handleRefineImage = async () => {
     if (!combinedImage) return;
     setIsProcessing(true);
-    setLoadingMsg("Menerapkan Pencahayaan & Branding...");
-    setQuotaError(null);
+    setLoadingMsg("Refining Image...");
     const progressInterval = startProgressSimulation();
     try {
       const result = await refineAndCustomize(combinedImage, bgPrompt, bgPrompt, selectedLighting, neonText, selectedStyle, (status) => setLoadingMsg(status));
@@ -176,8 +131,7 @@ function App() {
   const handleGenerateStoryboard = async () => {
     if (!combinedImage) return;
     setIsProcessing(true);
-    setLoadingMsg("Membuat 9 Variasi Storyboard...");
-    setQuotaError(null);
+    setLoadingMsg("Membuat Storyboard...");
     const progressInterval = startProgressSimulation();
     try {
       const result = await generateStoryboardGrid(combinedImage, neonText, (status) => setLoadingMsg(status));
@@ -196,14 +150,13 @@ function App() {
   const handleProcessFinalScenes = async () => {
     if (!storyboardGrid) return;
     setIsProcessing(true);
-    setLoadingMsg("Mengekstrak Scene & Finalisasi...");
-    setQuotaError(null);
+    setLoadingMsg("Finalisasi...");
     const progressInterval = startProgressSimulation();
     setScenes([]);
     try {
       const newScenes: GeneratedScene[] = [];
       for (let i = 0; i < 9; i++) {
-        setLoadingMsg(`Mengekstrak Scene ${i+1}/9...`);
+        setLoadingMsg(`Extract Scene ${i+1}/9...`);
         setProgress(10 + ((i + 1) / 9) * 80); 
         const sceneBase64 = await extractCell(storyboardGrid, i);
         newScenes.push({ id: i, imageUrl: sceneBase64, isGeneratingVideo: false });
@@ -226,11 +179,11 @@ function App() {
     setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, isGeneratingVideo: true } : s));
     setQuotaError(null);
     try {
-      const videoUrl = await generateSceneVideo(scene.imageUrl, "Subtle cinematic motion, elegant model moves naturally");
+      const videoUrl = await generateSceneVideo(scene.imageUrl, "Cinematic motion");
       setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, videoUrl, isGeneratingVideo: false } : s));
     } catch (err: any) {
       setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, isGeneratingVideo: false } : s));
-      alert("Gagal membuat video/kuota habis.");
+      alert("Gagal membuat video.");
     }
   };
 
@@ -243,8 +196,9 @@ function App() {
       <header className="border-b border-white/10 bg-black/50 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
+            {/* Simple Logo Icon */}
             <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center shrink-0">
-              <Icons.Sparkles />
+               <span className="text-white font-bold text-lg">AI</span>
             </div>
             <h1 className="text-lg md:text-xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent truncate">
               UGC AI <span className="text-cyan-400">AFFILIATE</span>
@@ -254,12 +208,12 @@ function App() {
              {steps.map((s, idx) => (
                <React.Fragment key={s.id}>
                  <span className={currentStep === s.id ? 'text-cyan-400' : ''}>{s.label}</span>
-                 {idx < steps.length - 1 && <Icons.ChevronRight />}
+                 {idx < steps.length - 1 && <span className="mx-1">›</span>}
                </React.Fragment>
              ))}
           </div>
-          <button className="md:hidden p-2 text-gray-400" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-            {isMobileMenuOpen ? <Icons.X /> : <Icons.Menu />}
+          <button className="md:hidden p-2 text-gray-400 font-bold" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+            {isMobileMenuOpen ? "✕" : "☰"}
           </button>
         </div>
         {isMobileMenuOpen && (
@@ -276,7 +230,7 @@ function App() {
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         {quotaError && (
           <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex items-center gap-3 text-red-200 text-sm md:text-base">
-            <Icons.AlertTriangle />
+            <span className="font-bold">⚠</span>
             <p>{quotaError}</p>
           </div>
         )}
@@ -297,7 +251,7 @@ function App() {
                       <img src={(type === 'model' ? modelImage : productImage)!} alt={type} className="w-full h-full object-cover" />
                     ) : (
                       <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 group-hover:text-cyan-400 transition-colors">
-                        <Icons.Upload />
+                        <span className="text-4xl mb-2">☁</span>
                         <span className="text-sm">Tap to upload</span>
                       </div>
                     )}
@@ -307,7 +261,7 @@ function App() {
             </div>
             <div className="flex justify-center pt-4">
               <button onClick={handleCombineAssets} disabled={!modelImage || !productImage || isProcessing} className="w-full sm:w-auto px-8 py-4 bg-white text-black font-bold rounded-full hover:bg-cyan-400 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                {isProcessing ? 'Processing...' : 'Generate Magic'} <Icons.Wand2 />
+                {isProcessing ? 'Processing...' : 'Generate Magic ✨'}
               </button>
             </div>
           </div>
@@ -329,7 +283,7 @@ function App() {
               </div>
               <div className="space-y-6 bg-gray-900/50 p-4 md:p-6 rounded-2xl border border-white/5">
                 <div className="space-y-3">
-                  <label className="text-sm font-medium text-cyan-400 flex items-center gap-2"><Icons.Sparkles /> Neon Branding</label>
+                  <label className="text-sm font-medium text-cyan-400 flex items-center gap-2">Neon Branding</label>
                   <input type="text" value={neonText} onChange={(e) => setNeonText(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-white focus:border-cyan-500 outline-none" placeholder="Brand name..." />
                 </div>
                 <div className="space-y-3">
@@ -347,7 +301,7 @@ function App() {
               </div>
               <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-white/10">
                 <button onClick={handleRefineImage} disabled={isProcessing} className="flex-1 px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg font-medium">Apply Refinements</button>
-                <button onClick={handleGenerateStoryboard} disabled={isProcessing} className="flex-1 px-6 py-3 bg-white text-black hover:bg-cyan-400 rounded-lg font-bold flex items-center justify-center gap-2">Generate Storyboard <Icons.ArrowRight /></button>
+                <button onClick={handleGenerateStoryboard} disabled={isProcessing} className="flex-1 px-6 py-3 bg-white text-black hover:bg-cyan-400 rounded-lg font-bold flex items-center justify-center gap-2">Generate Storyboard →</button>
               </div>
             </div>
           </div>
@@ -361,7 +315,7 @@ function App() {
                 <p className="text-gray-400 text-sm">9 unique variations generated.</p>
               </div>
               <button onClick={handleProcessFinalScenes} className="w-full sm:w-auto px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-lg flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.4)]">
-                <Icons.LayoutGrid /> Process Final Scenes
+                Process Final Scenes
               </button>
             </div>
             <div className="relative aspect-square w-full max-w-xl mx-auto rounded-xl overflow-hidden border-2 border-white/10 shadow-2xl">
@@ -397,11 +351,11 @@ function App() {
                   <div className="p-4 bg-gray-900 border-t border-white/5 space-y-3">
                      {!scene.videoUrl ? (
                        <button onClick={() => handleGenerateMotion(scene.id)} disabled={scene.isGeneratingVideo} className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium flex items-center justify-center gap-2">
-                         <Icons.Play /> GENERATE MOTION
+                         ▶ GENERATE MOTION
                        </button>
                      ) : (
                        <a href={scene.videoUrl} download={`scene-${scene.id}.mp4`} className="w-full py-3 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded-lg text-sm font-medium text-green-400 flex items-center justify-center gap-2">
-                         <Icons.Download /> SAVE VIDEO
+                         ⬇ SAVE VIDEO
                        </a>
                      )}
                   </div>
