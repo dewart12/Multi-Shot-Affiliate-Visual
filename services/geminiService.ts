@@ -1,12 +1,15 @@
 import { GoogleGenAI } from "@google/genai";
 
 /**
- * PENTING UNTUK USER GITHUB:
- * File .env atau .env.local TIDAK AKAN ADA di GitHub karena alasan keamanan (rahasia).
- * Anda harus MEMBUAT SENDIRI file tersebut di root folder project Anda.
+ * BYOK (Bring Your Own Key) implementation.
+ * Checks localStorage first, then fallback to environment variables.
  */
 const getApiKey = () => {
-  return process.env.GEMINI_API_KEY || process.env.API_KEY || "AIzaSyDF5ts9e5IZeDjYfaR18WyMOidxrP4_f2I";
+  const storedKey = localStorage.getItem('GEMINI_API_KEY');
+  if (storedKey && storedKey.trim().length > 5) {
+    return storedKey;
+  }
+  return process.env.GEMINI_API_KEY || process.env.API_KEY || "";
 };
 
 const PRO_IMAGE_MODEL = 'gemini-3-pro-image-preview';
@@ -27,7 +30,7 @@ async function callWithRetry<T>(fn: (ai: any) => Promise<T>, onRetry?: (msg: str
       lastError = error;
       const errorStr = (error.message || "").toLowerCase();
       
-      if (errorStr.includes("not found") || errorStr.includes("api_key_missing") || errorStr.includes("401")) {
+      if (errorStr.includes("not found") || errorStr.includes("api_key_missing") || errorStr.includes("401") || errorStr.includes("invalid")) {
         throw new Error("API_KEY_INVALID_OR_MISSING");
       }
       
@@ -49,8 +52,8 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
       model: PRO_IMAGE_MODEL,
       contents: {
         parts: [
-          { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } }, // Image 1: Person
-          { inlineData: { data: productBase64.split(',')[1], mimeType: 'image/png' } }, // Image 2: Product
+          { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } },
+          { inlineData: { data: productBase64.split(',')[1], mimeType: 'image/png' } },
           { text: `TASK: INTELLIGENT PRODUCT TRY-ON.
           1. ANALYZE Image 2 to identify the product category (e.g., Mukena, Clothing, Accessory, Bag).
           2. INTEGRATE the product onto the person from Image 1 naturally:
@@ -105,13 +108,19 @@ export const generateStoryboardGrid = async (baseImage: string, neonText: string
       contents: {
         parts: [
           { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `PROFESSIONAL 3x3 STORYBOARD (CONSISTENT IDENTITY):
-          - REFERENCE: The provided image shows a specific person and a specific product.
-          - TASK: Generate a 3x3 grid (9 frames) showing the SAME person wearing the SAME product.
-          - CONSISTENCY: Face identity, hair-coverage (if applicable), and product details must remain 100% constant across all 9 frames.
-          - VARIATIONS: Change camera angles (close-up, full shot, side profile), poses, and lighting slightly for each frame.
-          - BRANDING: The "${neonText}" neon sign must be visible in the backgrounds.
-          - OUTPUT: High-quality fashion montage, 9:16.` }
+          { text: `PROFESSIONAL 3x3 STORYBOARD (MAX VARIETY & CONSISTENCY):
+          - REFERENCE: Use the provided person and product as the anchor.
+          - TASK: Generate a 3x3 grid (9 frames). Each frame MUST be significantly different.
+          - NO REPETITION: Do NOT repeat any pose or angle. Each frame must be a unique scene.
+          - CAMERA VARIATION:
+              1. Macro/Close-up: Face and garment texture focus.
+              2. Profile: Left and right side profile shots.
+              3. Medium: Waist-up shots with different gestures.
+              4. Wide/Full-body: Full standing, walking, or sitting poses.
+          - GESTURES: Change hands positioning, head tilt, and expression (neutral, slight smile, looking away, looking at lens).
+          - CONSISTENCY: Face identity and product design MUST stay identical across all 9 variations.
+          - BRANDING: The "${neonText}" neon sign must appear in varied background positions.
+          - OUTPUT: Professional 9:16 storyboard grid, high fashion quality.` }
         ]
       },
       config: { 
