@@ -6,7 +6,7 @@ import { GoogleGenAI } from "@google/genai";
  * Anda harus MEMBUAT SENDIRI file tersebut di root folder project Anda.
  */
 const getApiKey = () => {
-  return process.env.GEMINI_API_KEY || process.env.API_KEY || "AIzaSyAhsMqPWuM7RSBRc-HK1z_3FxglWkH0piM";
+  return process.env.GEMINI_API_KEY || process.env.API_KEY || "AIzaSyDF5ts9e5IZeDjYfaR18WyMOidxrP4_f2I";
 };
 
 const PRO_IMAGE_MODEL = 'gemini-3-pro-image-preview';
