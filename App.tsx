@@ -188,6 +188,15 @@ const App: React.FC = () => {
     }
   };
 
+  const downloadMedia = (url: string, filename: string) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const onRefineClick = async () => {
     if (!state.modelImage || !state.productImage) return;
     setLoadingMsg("GENERATING 3 REFINEMENT VARIATIONS...");
@@ -608,14 +617,36 @@ const App: React.FC = () => {
                       )}
 
                       {scene.image && (
-                        <div className="absolute top-6 left-1/2 -translate-x-1/2 flex gap-3 z-40 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 w-full justify-center px-4">
-                           <div className="flex bg-black/60 backdrop-blur-md rounded-2xl p-1 border border-white/10 shadow-lg">
-                             <button onClick={() => onUpscale(idx, '2K')} className="px-3 py-1.5 text-[8px] font-black uppercase rounded-xl hover:bg-blue-600 transition-colors text-white">2K</button>
-                             <button onClick={() => onUpscale(idx, '4K')} className="px-3 py-1.5 text-[8px] font-black uppercase rounded-xl hover:bg-blue-600 transition-colors text-white">4K</button>
+                        <div className="absolute top-6 left-1/2 -translate-x-1/2 flex gap-2 z-40 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 w-max px-4">
+                           <div className="flex bg-black/80 backdrop-blur-xl rounded-2xl p-1.5 border border-white/10 shadow-2xl items-center gap-1.5">
+                             
+                             {/* Downloads */}
+                             <button onClick={() => downloadMedia(scene.image!, `shot-${idx+1}-still.png`)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white/10 transition-colors group/btn relative" title="Download Image">
+                               <i className="fa-solid fa-image text-zinc-400 group-hover/btn:text-white transition-colors"></i>
+                               <i className="fa-solid fa-arrow-down text-[8px] absolute bottom-1.5 right-1.5 text-zinc-500 group-hover/btn:text-white"></i>
+                             </button>
+                             
+                             {scene.videoUrl && (
+                                  <button onClick={() => downloadMedia(scene.videoUrl!, `shot-${idx+1}-motion.mp4`)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-blue-600/30 transition-colors group/btn relative bg-blue-600/10 border border-blue-500/20" title="Download Video">
+                                     <i className="fa-solid fa-film text-blue-400"></i>
+                                     <i className="fa-solid fa-arrow-down text-[8px] absolute bottom-1.5 right-1.5 text-blue-300"></i>
+                                 </button>
+                             )}
+
+                             <div className="w-px h-4 bg-white/20 mx-1"></div>
+
+                             {/* Upscales */}
+                             <button onClick={() => onUpscale(idx, '2K')} className="px-2 py-1.5 text-[8px] font-black uppercase rounded-lg hover:bg-blue-600 transition-colors text-white hover:text-white text-zinc-400">2K</button>
+                             <button onClick={() => onUpscale(idx, '4K')} className="px-2 py-1.5 text-[8px] font-black uppercase rounded-lg hover:bg-blue-600 transition-colors text-white hover:text-white text-zinc-400">4K</button>
+
+                             <div className="w-px h-4 bg-white/20 mx-1"></div>
+
+                             {/* Repair */}
+                             <button onClick={() => onRepair(idx)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-blue-600 transition-colors text-zinc-400 hover:text-white">
+                               <i className="fa-solid fa-wand-magic-sparkles text-[12px]"></i>
+                             </button>
+
                            </div>
-                           <button onClick={() => onRepair(idx)} className="w-10 h-10 bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl flex items-center justify-center hover:bg-blue-600 transition-colors shadow-lg">
-                             <i className="fa-solid fa-wand-magic-sparkles text-[12px] text-white"></i>
-                           </button>
                         </div>
                       )}
 
