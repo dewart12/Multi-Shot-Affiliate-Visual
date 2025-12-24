@@ -1,3 +1,4 @@
+
 export interface SceneFrame {
   id: number;
   image: string | null;
@@ -10,8 +11,13 @@ export interface SceneFrame {
 export interface GenerationState {
   modelImage: string | null;
   productImage: string | null;
+  promptInstruction: string;
   combinedImage: string | null;
   combinedCandidates: string[] | null;
+  brandingText: string;
+  stylePrompt: string;
+  fontStyle: string;
+  textPlacement: string;
   storyboardGrid: string | null;
   scenes: SceneFrame[];
   extractionProgress: number;

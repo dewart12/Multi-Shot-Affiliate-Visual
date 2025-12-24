@@ -4,56 +4,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multishot Affiliate AI | Personal Storyboard</title>
+    <title>AI Storyboard Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         body {
-            background-color: #080809;
+            background-color: #050506;
             color: #f1f1f2;
             font-family: 'Plus Jakarta Sans', sans-serif;
             margin: 0;
-            padding: 0;
-            overflow-y: auto;
-            letter-spacing: -0.01em;
+            overflow-x: hidden;
         }
-        .glass {
-            background: rgba(255, 255, 255, 0.01);
-            backdrop-filter: blur(40px);
+        .glass-card {
+            background: #0c0c0e;
             border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
         }
-        .gradient-text {
-            background: linear-gradient(135deg, #ffffff 0%, #3b82f6 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        .glass-card:hover {
+            border-color: rgba(37, 99, 235, 0.3);
         }
-        @keyframes fade-in {
+        .btn-primary {
+            background: #1d4ed8;
+            transition: all 0.2s ease;
+        }
+        .btn-primary:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .animate-up {
-            animation: fade-in 0.4s ease-out forwards;
+        .animate-in {
+            animation: fadeIn 0.4s ease-out forwards;
         }
-        ::-webkit-scrollbar {
-            width: 6px;
+
+        /* Animated Border Effect */
+        @keyframes gradient-xy {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
         }
-        ::-webkit-scrollbar-track {
-            background: #080809;
+        .animated-gradient-border {
+            position: relative;
+            z-index: 0;
+            overflow: hidden;
         }
-        ::-webkit-scrollbar-thumb {
-            background: #1f1f21;
-            border-radius: 10px;
+        .animated-gradient-border::before {
+            content: '';
+            position: absolute;
+            z-index: -1;
+            inset: -4px;
+            background: linear-gradient(45deg, #2563eb, #10b981, #2563eb, #9333ea);
+            background-size: 300%;
+            animation: gradient-xy 3s ease infinite;
+            border-radius: inherit;
         }
-        /* Custom Loading Bar Animation */
-        .progress-shimmer {
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            background-size: 200% 100%;
-            animation: shimmer 1.5s infinite;
+        .animated-gradient-border::after {
+            content: '';
+            position: absolute;
+            z-index: -1;
+            inset: 2px; /* Border width */
+            background: inherit; /* Inherit from parent bg, usually black/dark */
+            border-radius: inherit;
         }
-        @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
+        
+        /* Specific bg class for the inner content to sit on top of the border */
+        .bg-inner-card {
+            background: #0c0c0e; 
         }
     </style>
     <script type="importmap">
