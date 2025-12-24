@@ -21,9 +21,10 @@ export const validateApiKey = async (apiKey: string): Promise<boolean> => {
   try {
     const ai = new GoogleGenAI({ apiKey });
     // Perform a lightweight "ping" to check if the key is valid.
-    // We use a cheap text model just to verify authentication.
+    // Using 'gemini-3-flash-preview' ensures the key works with the newer model series
+    // required by the app.
     await ai.models.generateContent({
-      model: 'gemini-2.5-flash-latest',
+      model: 'gemini-3-flash-preview',
       contents: { parts: [{ text: 'Ping' }] },
     });
     return true;
