@@ -1,584 +1,630 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Upload, Wand2, LayoutGrid, Film, Download, ArrowRight, Sparkles, AlertTriangle, Play, Pause, ChevronRight, CheckCircle2, Sliders } from 'lucide-react';
+import { generateCombinedImage, refineAndCustomize, generateStoryboardGrid, extractCell, generateSceneVideo } from './services/geminiService';
 
-import React, { useState, useEffect } from 'react';
-import { AppStep, GenerationState } from './types.ts';
-import { 
-  generateCombinedImage,
-  generateRefinementVariations,
-  generateBrandingVariations,
-  generateStoryboardGrid, 
-  extractCell,
-  generateSceneVideo,
-  upscaleScene,
-  repairImage
-} from './services/geminiService.ts';
+// --- KOMPONEN BARU: CyberProgress (Tanpa perlu file terpisah) ---
+const CyberProgress = ({ progress, text }: { progress: number, text: string }) => (
+  <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 backdrop-blur-xl">
+    <div className="w-full max-w-md p-6 relative">
+      {/* Box Container Kaca */}
+      <div className="relative bg-gray-900/50 border border-cyan-500/30 rounded-xl p-8 shadow-[0_0_50px_rgba(6,182,212,0.15)] overflow-hidden ring-1 ring-white/5">
+        
+        {/* Hiasan Sudut Tech */}
+        <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-cyan-400"></div>
+        <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-cyan-400"></div>
+        <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-purple-400"></div>
+        <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-purple-400"></div>
 
-const App: React.FC = () => {
-  const [step, setStep] = useState<AppStep>(AppStep.UPLOAD);
-  const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
-  const [loadingMsg, setLoadingMsg] = useState('');
-  const [quotaError, setQuotaError] = useState<string | null>(null);
+        {/* Teks Atas */}
+        <div className="flex justify-between items-end mb-4">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+            <span className="text-cyan-400 font-mono text-xs tracking-[0.25em] font-bold animate-pulse">
+              {text.toUpperCase() || "SYSTEM PROCESSING"}
+            </span>
+          </div>
+          <span className="text-white font-mono font-bold text-2xl tabular-nums tracking-tighter">
+            {Math.round(progress)}<span className="text-sm text-gray-500 ml-1">%</span>
+          </span>
+        </div>
+
+        {/* Bar Luar */}
+        <div className="h-2 bg-gray-800 rounded-full overflow-hidden border border-white/10 relative shadow-inner">
+           {/* Grid Background Halus */}
+           <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_50%,rgba(255,255,255,0.03)_50%)] bg-[length:4px_100%]"></div>
+           
+           {/* Bar Isi (Animasi Lebar) */}
+           <div 
+            className="h-full bg-gradient-to-r from-cyan-600 via-blue-500 to-purple-600 transition-all duration-300 ease-out relative shadow-[0_0_15px_rgba(6,182,212,0.5)]"
+            style={{ width: `${progress}%` }}
+           >
+            {/* Efek Kilat Putih Bergerak */}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent w-full animate-[shimmer_2s_infinite]"></div>
+            {/* Glow Ujung Bar */}
+            <div className="absolute top-0 right-0 h-full w-[2px] bg-white shadow-[0_0_10px_2px_rgba(255,255,255,0.8)]"></div>
+          </div>
+        </div>
+
+        {/* Teks Bawah */}
+        <div className="mt-4 flex justify-between text-[10px] text-gray-400 font-mono tracking-wider opacity-80">
+          <div className="flex gap-2">
+             <span>CPU: <span className="text-green-400">OPTIMAL</span></span>
+             <span className="text-gray-600">|</span>
+             <span>MEM: <span className="text-yellow-400">ALLOCATED</span></span>
+          </div>
+          <span className="text-cyan-500/80">
+             {progress < 30 ? "INITIALIZING NEURAL NET..." : 
+              progress < 60 ? "GENERATING PIXELS..." : 
+              progress < 90 ? "REFINING DETAILS..." : "FINALIZING..."}
+          </span>
+        </div>
+      </div>
+      
+      {/* Background Glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[60%] bg-cyan-500/10 blur-[80px] -z-10 rounded-full"></div>
+    </div>
+  </div>
+);
+// -----------------------------------------------------------------
+
+type AppStep = 'upload' | 'refine' | 'storyboard' | 'final';
+
+interface GeneratedScene {
+  id: number;
+  imageUrl: string;
+  videoUrl?: string;
+  isGeneratingVideo?: boolean;
+}
+
+function App() {
+  const [currentStep, setCurrentStep] = useState<AppStep>('upload');
   
-  const [state, setState] = useState<GenerationState>({
-    modelImage: null,
-    productImage: null,
-    promptInstruction: '',
-    combinedImage: null,
-    combinedCandidates: null,
-    brandingText: 'LUXE',
-    stylePrompt: 'High-end minimalist studio with soft moody lighting',
-    fontStyle: 'Modern Sans',
-    textPlacement: 'Behind Subject',
-    storyboardGrid: null,
-    scenes: Array.from({ length: 9 }, (_, i) => ({
-      id: i,
-      image: null,
-      videoUrl: null,
-      isExtracting: false,
-      isGeneratingVideo: false,
-      isUpscaling: false
-    })),
-    extractionProgress: 0,
-  });
+  // State for Upload Step
+  const [modelImage, setModelImage] = useState<string | null>(null);
+  const [productImage, setProductImage] = useState<string | null>(null);
+  
+  // State for Refine Step
+  const [combinedImage, setCombinedImage] = useState<string | null>(null);
+  const [bgPrompt, setBgPrompt] = useState('Luxury modern minimalist penthouse living room with warm ambient lighting');
+  const [neonText, setNeonText] = useState('LUXE');
+  const [selectedStyle, setSelectedStyle] = useState('Cursive');
+  const [selectedLighting, setSelectedLighting] = useState('Cinematic Warm');
+  
+  // State for Storyboard Step
+  const [storyboardGrid, setStoryboardGrid] = useState<string | null>(null);
+  
+  // State for Final Step
+  const [scenes, setScenes] = useState<GeneratedScene[]>([]);
+  
+  // General State
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState('');
+  const [progress, setProgress] = useState(0); // State baru untuk progress bar persentase
+  const [error, setError] = useState<string | null>(null);
+  const [quotaError, setQuotaError] = useState<string | null>(null);
 
-  const [scenePrompts, setScenePrompts] = useState<string[]>(Array(9).fill("Subtle cinematic motion, elegant model moves naturally."));
-  const [repairPrompts, setRepairPrompts] = useState<string[]>(Array(9).fill("Fix any glitches and enhance facial details."));
+  // Helper function to convert file to base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
 
-  useEffect(() => {
-    const checkKey = async () => {
-      const aistudio = (window as any).aistudio;
-      if (aistudio && !(await aistudio.hasSelectedApiKey())) {
-        setShowKeyModal(true);
-      }
-    };
-    checkKey();
-  }, []);
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'model' | 'product') => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'model' | 'product') => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setState(prev => ({ ...prev, [type === 'model' ? 'modelImage' : 'productImage']: ev.target?.result as string }));
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleError = (e: any) => {
-    console.error(e);
-    if (e.message === "QUOTA_LIMIT_ZERO") {
-      setQuotaError("YOUR API QUOTA IS ZERO. Please upgrade your Google Cloud Project to a PAID plan and enable billing for Gemini 3 Pro & Veo 3.1.");
-    } else if (e.message === "API_KEY_INVALID") {
-      setShowKeyModal(true);
-    } else {
-      alert("Error occurred: " + (e.message || "Unknown error"));
-    }
-  };
-
-  const onRefineClick = async () => {
-    if (!state.modelImage || !state.productImage) return;
-    setLoadingMsg("GENERATING 3 REFINEMENT VARIATIONS...");
-    setQuotaError(null);
-    try {
-      // Use generateRefinementVariations with user instruction
-      const res = await generateRefinementVariations(
-        state.modelImage, 
-        state.productImage,
-        state.promptInstruction
-      );
-      setState(prev => ({ 
-        ...prev, 
-        combinedCandidates: res,
-        combinedImage: res[0] // Default to first one
-      }));
-      setStep(AppStep.REFINE);
-    } catch (e: any) { 
-      handleError(e);
-    }
-    setLoadingMsg("");
-  };
-
-  const onApplyBrandingClick = async () => {
-    if (!state.combinedImage) return;
-    setLoadingMsg("GENERATING 3 BRANDING VARIATIONS...");
-    setQuotaError(null);
-    try {
-      const res = await generateBrandingVariations(
-        state.combinedImage,
-        state.brandingText || "LUXE",
-        state.stylePrompt || "Cinematic",
-        state.fontStyle || "Modern Sans",
-        state.textPlacement || "Behind Subject"
-      );
-      // Update state to show these 3 new images as the selection candidates.
-      setState(prev => ({ 
-        ...prev, 
-        combinedImage: res[0], // Select first by default
-        combinedCandidates: res 
-      }));
-    } catch (e: any) { 
-      handleError(e);
-    }
-    setLoadingMsg("");
-  };
-
-  const onGridClick = async () => {
-    if (!state.combinedImage) return;
-    setLoadingMsg("GENERATING PRODUCTION GRID...");
-    setQuotaError(null);
-    try {
-      // Use user defined branding text and style
-      const res = await generateStoryboardGrid(
-        state.combinedImage, 
-        state.brandingText || "LUXE", 
-        state.stylePrompt || "Cinematic"
-      );
-      setState(prev => ({ ...prev, storyboardGrid: res }));
-      setStep(AppStep.STORYBOARD);
-    } catch (e: any) { 
-      handleError(e);
-    }
-    setLoadingMsg("");
-  };
-
-  const onFinalRenderClick = async () => {
-    if (!state.storyboardGrid) return;
-    setStep(AppStep.RESULTS);
-    setQuotaError(null);
-    // Start automated extraction
-    for (let i = 0; i < 9; i++) {
-      setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: true } : s) }));
       try {
-        const img = await extractCell(state.storyboardGrid!, i);
-        setState(prev => ({
-          ...prev,
-          scenes: prev.scenes.map(s => s.id === i ? { ...s, image: img, isExtracting: false } : s),
-          extractionProgress: Math.round(((i + 1) / 9) * 100)
-        }));
-      } catch (e: any) { 
-        console.error("Extraction failed for index " + i, e);
-        if (e.message === "QUOTA_LIMIT_ZERO") {
-          setQuotaError("Quota Limit Reached during extraction. Some scenes might not load.");
-          break;
-        }
+        const base64 = await fileToBase64(file);
+        if (type === 'model') setModelImage(base64);
+        else setProductImage(base64);
+        setError(null);
+      } catch (err) {
+        setError("Gagal memproses gambar");
       }
     }
   };
 
-  const onUpscale = async (idx: number, size: '2K' | '4K') => {
-    setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, isUpscaling: true } : s) }));
+  // --- FUNGSI PROGRESS BAR SIMULATOR ---
+  // Membuat efek loading berjalan perlahan sampai 90%, lalu mentok sampai proses selesai
+  const startProgressSimulation = () => {
+    setProgress(0);
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 90) {
+          clearInterval(interval);
+          return 90; // Mentok di 90% nunggu API
+        }
+        // Tambah progress acak biar terlihat natural
+        return prev + Math.random() * 2; 
+      });
+    }, 200); // Update cepat setiap 200ms
+    return interval;
+  };
+  // -------------------------------------
+
+  const handleCombineAssets = async () => {
+    if (!modelImage || !productImage) return;
+    
+    setIsProcessing(true);
+    setLoadingMsg("Analisis AI & Penggabungan Aset...");
+    setQuotaError(null);
+    const progressInterval = startProgressSimulation(); // Mulai animasi bar
+
     try {
-      const img = await upscaleScene(state.scenes[idx].image!, size);
-      setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, image: img, isUpscaling: false } : s) }));
-    } catch (e) { handleError(e); }
+      const result = await generateCombinedImage(modelImage, productImage, (status) => setLoadingMsg(status));
+      setCombinedImage(result);
+      setCurrentStep('refine');
+      setProgress(100); // Selesai
+    } catch (err: any) {
+      console.error(err);
+      if (err.message.includes("429") || err.message.includes("quota")) {
+        setQuotaError("Kuota API Habis. Silakan coba lagi nanti atau ganti API Key.");
+      } else {
+        setError("Gagal menggabungkan aset. Coba lagi.");
+      }
+    } finally {
+      clearInterval(progressInterval); // Stop animasi
+      setIsProcessing(false);
+    }
   };
 
-  const onRepair = async (idx: number) => {
-    setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, isExtracting: true } : s) }));
+  const handleRefineImage = async () => {
+    if (!combinedImage) return;
+
+    setIsProcessing(true);
+    setLoadingMsg("Menerapkan Pencahayaan & Branding...");
+    setQuotaError(null);
+    const progressInterval = startProgressSimulation();
+
     try {
-      const img = await repairImage(state.scenes[idx].image!, repairPrompts[idx]);
-      setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, image: img, isExtracting: false } : s) }));
-    } catch (e) { handleError(e); }
+      const result = await refineAndCustomize(
+        combinedImage, 
+        bgPrompt, 
+        bgPrompt, // Using prompt as ref for now
+        selectedLighting, 
+        neonText, 
+        selectedStyle,
+        (status) => setLoadingMsg(status)
+      );
+      setCombinedImage(result); // Update with refined version
+      setProgress(100);
+    } catch (err: any) {
+      console.error(err);
+      if (err.message.includes("429")) {
+        setQuotaError("Kuota API Habis.");
+      } else {
+        setError("Gagal memproses gambar.");
+      }
+    } finally {
+      clearInterval(progressInterval);
+      setIsProcessing(false);
+    }
   };
 
-  const onVideo = async (idx: number) => {
-    setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, isGeneratingVideo: true } : s) }));
+  const handleGenerateStoryboard = async () => {
+    if (!combinedImage) return;
+
+    setIsProcessing(true);
+    setLoadingMsg("Membuat 9 Variasi Storyboard...");
+    setQuotaError(null);
+    const progressInterval = startProgressSimulation();
+
     try {
-      const url = await generateSceneVideo(state.scenes[idx].image!, scenePrompts[idx]);
-      setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, videoUrl: url, isGeneratingVideo: false } : s) }));
-    } catch (e) { handleError(e); }
+      const result = await generateStoryboardGrid(combinedImage, neonText, (status) => setLoadingMsg(status));
+      setStoryboardGrid(result);
+      setCurrentStep('storyboard');
+      setProgress(100);
+    } catch (err: any) {
+      console.error(err);
+      if (err.message.includes("429")) {
+        setQuotaError("Kuota API Habis.");
+      } else {
+        setError("Gagal membuat storyboard.");
+      }
+    } finally {
+      clearInterval(progressInterval);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleProcessFinalScenes = async () => {
+    if (!storyboardGrid) return;
+
+    setIsProcessing(true);
+    setLoadingMsg("Mengekstrak Scene & Finalisasi...");
+    setQuotaError(null);
+    const progressInterval = startProgressSimulation();
+    
+    // Reset scenes
+    setScenes([]);
+
+    try {
+      // Extract 9 scenes
+      const newScenes: GeneratedScene[] = [];
+      
+      // Process sequentially to avoid rate limits if needed, or parallel for speed
+      // Using sequential for safety with extracting
+      for (let i = 0; i < 9; i++) {
+        setLoadingMsg(`Mengekstrak Scene ${i+1}/9...`);
+        // Update progress bar manual sesuai scene yang sedang diproses
+        setProgress(10 + ((i + 1) / 9) * 80); 
+
+        const sceneBase64 = await extractCell(storyboardGrid, i);
+        newScenes.push({
+          id: i,
+          imageUrl: sceneBase64,
+          isGeneratingVideo: false
+        });
+      }
+      
+      setScenes(newScenes);
+      setCurrentStep('final');
+      setProgress(100);
+    } catch (err: any) {
+      console.error(err);
+      if (err.message.includes("429")) {
+        setQuotaError("Kuota API Habis saat ekstraksi.");
+      } else {
+        setError("Gagal memproses final scenes.");
+      }
+    } finally {
+      clearInterval(progressInterval);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleGenerateMotion = async (sceneId: number) => {
+    const scene = scenes.find(s => s.id === sceneId);
+    if (!scene) return;
+
+    setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, isGeneratingVideo: true } : s));
+    setQuotaError(null);
+
+    try {
+      const videoUrl = await generateSceneVideo(scene.imageUrl, "Subtle cinematic motion, elegant model moves naturally");
+      setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, videoUrl, isGeneratingVideo: false } : s));
+    } catch (err: any) {
+      console.error(err);
+      setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, isGeneratingVideo: false } : s));
+      if (err.message.includes("429")) {
+        alert("Kuota API Video Habis. Coba lagi nanti.");
+      } else {
+        alert("Gagal membuat video.");
+      }
+    }
   };
 
   return (
-    <div className="min-h-screen bg-[#050506] text-white selection:bg-blue-500/30 font-sans">
-      {/* 1. Header Section */}
-      <header className="pt-12 pb-8 text-center space-y-4">
-        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight">UGC AI Affiliate Storyboard Scene</h1>
-        <div className="flex justify-center">
-          <div className="bg-[#0c1a11] border border-[#1e3a24] rounded-full px-5 py-2 flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#10b981] shadow-[0_0_8px_#10b981]"></div>
-            <span className="text-[#10b981] text-[10px] font-bold uppercase tracking-widest">API Key Connected</span>
+    <div className="min-h-screen bg-black text-white font-sans selection:bg-cyan-500/30">
+      
+      {/* --- GANTI LOADING LAMA DENGAN CYBERPROGRESS --- */}
+      {isProcessing && (
+        <CyberProgress progress={progress} text={loadingMsg} />
+      )}
+      
+      {/* Header */}
+      <header className="border-b border-white/10 bg-black/50 backdrop-blur-md sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+              UGC AI <span className="text-cyan-400">AFFILIATE</span>
+            </h1>
+          </div>
+          
+          <div className="flex items-center gap-1 text-sm font-medium text-gray-400">
+             <span className={currentStep === 'upload' ? 'text-cyan-400' : ''}>Upload</span>
+             <ChevronRight className="w-4 h-4" />
+             <span className={currentStep === 'refine' ? 'text-cyan-400' : ''}>Refine</span>
+             <ChevronRight className="w-4 h-4" />
+             <span className={currentStep === 'storyboard' ? 'text-cyan-400' : ''}>Storyboard</span>
+             <ChevronRight className="w-4 h-4" />
+             <span className={currentStep === 'final' ? 'text-cyan-400' : ''}>Render</span>
           </div>
         </div>
       </header>
 
-      {/* 2. Breadcrumb Navigation Flow */}
-      <nav className="flex justify-center items-center gap-4 md:gap-8 mb-16 px-4">
-        {[
-          { step: AppStep.UPLOAD, label: 'Upload Assets' },
-          { step: AppStep.REFINE, label: 'Refine Image' },
-          { step: AppStep.STORYBOARD, label: 'Storyboard Grid' },
-          { step: AppStep.RESULTS, label: 'Final Render' }
-        ].map((item, idx, arr) => {
-          const isActive = step === item.step;
-          const isCompleted = arr.findIndex(x => x.step === step) > idx;
-          
-          // Allow navigation if data exists for that step
-          const canNavigate = 
-            (item.step === AppStep.UPLOAD) ||
-            (item.step === AppStep.REFINE && (state.combinedImage || state.modelImage)) ||
-            (item.step === AppStep.STORYBOARD && state.storyboardGrid) ||
-            (item.step === AppStep.RESULTS && state.scenes.some(s => s.image));
-
-          return (
-            <React.Fragment key={item.step}>
-              <div 
-                onClick={() => canNavigate && setStep(item.step)}
-                className={`flex items-center gap-3 px-6 py-4 rounded-2xl border transition-all ${
-                isActive 
-                  ? 'bg-[#0f172a] border-blue-600/50 text-white shadow-[0_0_20px_rgba(37,99,235,0.15)]' 
-                  : isCompleted 
-                    ? 'bg-[#0c1a11]/20 border-green-600/30 text-green-500 hover:bg-[#0c1a11]/40'
-                    : 'bg-[#0c0c0e] border-white/5 text-zinc-600'
-              } ${canNavigate ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-blue-500' : isCompleted ? 'bg-green-500' : 'bg-zinc-800'}`}></div>
-                <span className="text-[11px] font-black uppercase tracking-widest whitespace-nowrap">{item.label}</span>
-              </div>
-              {idx < arr.length - 1 && (
-                <i className="fa-solid fa-arrow-right text-[10px] opacity-10"></i>
-              )}
-            </React.Fragment>
-          );
-        })}
-      </nav>
-
-      <main className="max-w-[1440px] mx-auto px-6 md:px-12">
-        {loadingMsg && (
-          <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center">
-            <div className="w-16 h-16 border-2 border-blue-600/20 border-t-blue-600 rounded-full animate-spin mb-6"></div>
-            <p className="text-[12px] font-black uppercase tracking-[0.4em] text-blue-500">{loadingMsg}</p>
-          </div>
-        )}
-
-        {/* Global Error Notice for Quota */}
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        
         {quotaError && (
-          <div className="mb-8 p-6 bg-red-600/10 border border-red-500/30 rounded-[2rem] animate-in flex items-center gap-6">
-            <div className="w-12 h-12 bg-red-600/20 rounded-full flex items-center justify-center flex-shrink-0">
-              <i className="fa-solid fa-triangle-exclamation text-red-500"></i>
-            </div>
-            <div>
-              <h4 className="text-[12px] font-black uppercase tracking-widest text-red-500 mb-1">Quota Warning</h4>
-              <p className="text-[11px] text-zinc-400 font-bold uppercase tracking-tight leading-relaxed">{quotaError}</p>
-            </div>
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex items-center gap-3 text-red-200">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+            <p>{quotaError}</p>
           </div>
         )}
 
-        {/* UPLOAD STEP */}
-        {step === AppStep.UPLOAD && (
-          <div className="animate-in flex flex-col items-center max-w-5xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full aspect-[16/7]">
-              {[{id:'model', label:'Model Base'}, {id:'product', label:'Product Item'}].map(u => (
-                <label key={u.id} className="bg-[#0c0c0e] rounded-[3rem] border border-white/5 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500/40 transition-all overflow-hidden relative group">
-                  <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, u.id as any)} />
-                  {state[`${u.id}Image` as keyof GenerationState] ? (
-                    <img src={state[`${u.id}Image` as keyof GenerationState] as string} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+        {/* STEP 1: UPLOAD */}
+        {currentStep === 'upload' && (
+          <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="text-center space-y-2">
+              <h2 className="text-3xl font-bold text-white">Upload Assets</h2>
+              <p className="text-gray-400">Upload your model photo and the product you want them to wear.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Model Upload */}
+              <div className="space-y-4">
+                <label className="block text-sm font-medium text-gray-300">Model Reference (Person)</label>
+                <div className="relative group aspect-[3/4] bg-gray-900 rounded-xl border-2 border-dashed border-gray-700 hover:border-cyan-500/50 transition-all overflow-hidden">
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={(e) => handleImageUpload(e, 'model')}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                  {modelImage ? (
+                    <img src={modelImage} alt="Model" className="w-full h-full object-cover" />
                   ) : (
-                    <div className="text-center opacity-40 group-hover:opacity-100 transition-opacity">
-                      <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i className="fa-solid fa-plus text-xl"></i>
-                      </div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em]">{u.label}</p>
-                    </div>
-                  )}
-                </label>
-              ))}
-            </div>
-
-            {/* Custom Instruction Input */}
-            <div className="w-full mt-10 bg-[#0c0c0e] rounded-[2rem] border border-white/5 p-6 shadow-xl">
-               <label className="text-[11px] font-black uppercase tracking-widest text-zinc-500 block mb-4">
-                 Custom Integration Instruction
-               </label>
-               <textarea 
-                  value={state.promptInstruction}
-                  onChange={(e) => setState(prev => ({...prev, promptInstruction: e.target.value}))}
-                  placeholder="Describe exactly how the model should interact with the product (e.g., 'Model wearing the sunglasses looking to the right', 'Model holding the juice bottle next to face')..."
-                  className="w-full bg-[#050506] text-[13px] text-white rounded-xl p-4 border border-white/10 outline-none focus:border-blue-600/50 h-24 resize-none transition-colors"
-               />
-            </div>
-
-            <button 
-              disabled={!state.modelImage || !state.productImage} 
-              onClick={onRefineClick} 
-              className="mt-12 bg-[#1d4ed8] hover:bg-blue-600 disabled:opacity-20 px-24 py-6 rounded-full font-black uppercase tracking-[0.2em] text-[12px] shadow-[0_15px_40px_rgba(37,99,235,0.3)] transition-all active:scale-95"
-            >
-              Start Refinement
-            </button>
-          </div>
-        )}
-
-        {/* REFINE STEP - MODIFIED TO SHOW 3 VARIATIONS + CUSTOMIZATION */}
-        {step === AppStep.REFINE && (
-          <div className="animate-in flex flex-col items-center w-full">
-            <h3 className="text-[14px] font-black uppercase tracking-[0.4em] text-zinc-500 mb-10 text-center">Select Preferred Variation</h3>
-            
-            {/* 3 Variations Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-6xl mb-12">
-              {(state.combinedCandidates || [state.combinedImage]).filter(Boolean).map((img, idx) => (
-                <div 
-                  key={idx}
-                  onClick={() => setState(prev => ({ ...prev, combinedImage: img }))}
-                  className={`
-                    group relative rounded-[3rem] overflow-hidden cursor-pointer transition-all duration-500 aspect-[9/16]
-                    ${state.combinedImage === img ? 'scale-105 z-10' : 'scale-95 opacity-60 hover:opacity-100 hover:scale-100'}
-                  `}
-                >
-                  {/* Container for animated border - Only active for selected item */}
-                  <div className={`absolute inset-0 ${state.combinedImage === img ? 'animated-gradient-border' : ''}`}>
-                    <div className="bg-inner-card w-full h-full relative z-10">
-                        <img src={img as string} className="w-full h-full object-cover" />
-                    </div>
-                  </div>
-
-                  {/* Checkmark Overlay */}
-                  {state.combinedImage === img && (
-                    <div className="absolute top-6 right-6 z-20 bg-blue-600 w-10 h-10 rounded-full flex items-center justify-center shadow-lg">
-                      <i className="fa-solid fa-check text-white text-sm"></i>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 group-hover:text-cyan-400 transition-colors">
+                      <Upload className="w-10 h-10 mb-2" />
+                      <span className="text-sm">Click to upload model</span>
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
-
-            {/* Creative Direction Control Panel */}
-            <div className="w-full max-w-4xl bg-[#0c0c0e] border border-white/5 rounded-[3rem] p-8 mb-12 shadow-2xl relative">
-              <h3 className="text-[12px] font-black uppercase tracking-[0.3em] text-zinc-400 mb-6 text-center">Creative Direction</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                 <div className="space-y-3">
-                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 ml-4">Neon Brand Text</label>
-                   <input 
-                      type="text" 
-                      value={state.brandingText}
-                      onChange={(e) => setState(prev => ({...prev, brandingText: e.target.value}))}
-                      placeholder="e.g. ALANA"
-                      className="w-full bg-[#050506] border border-white/10 rounded-full px-6 py-4 text-[12px] font-bold tracking-widest outline-none focus:border-blue-600/50 transition-colors placeholder:text-zinc-800"
-                   />
-                 </div>
-                 <div className="space-y-3">
-                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 ml-4">Background / Atmosphere</label>
-                   <input 
-                      type="text" 
-                      value={state.stylePrompt}
-                      onChange={(e) => setState(prev => ({...prev, stylePrompt: e.target.value}))}
-                      placeholder="e.g. Cyberpunk City, Luxury Beach"
-                      className="w-full bg-[#050506] border border-white/10 rounded-full px-6 py-4 text-[12px] font-bold tracking-widest outline-none focus:border-blue-600/50 transition-colors placeholder:text-zinc-800"
-                   />
-                 </div>
-                 <div className="space-y-3">
-                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 ml-4">Font Style</label>
-                   <select 
-                      value={state.fontStyle}
-                      onChange={(e) => setState(prev => ({...prev, fontStyle: e.target.value}))}
-                      className="w-full bg-[#050506] border border-white/10 rounded-full px-6 py-4 text-[12px] font-bold tracking-widest outline-none focus:border-blue-600/50 transition-colors cursor-pointer appearance-none"
-                   >
-                     <option value="Modern Sans">Modern Sans</option>
-                     <option value="Elegant Serif">Elegant Serif</option>
-                     <option value="Bold Graffiti">Bold Graffiti</option>
-                     <option value="Neon Script">Neon Script</option>
-                     <option value="Futuristic Mono">Futuristic Mono</option>
-                   </select>
-                 </div>
-                 <div className="space-y-3">
-                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 ml-4">Text Placement</label>
-                   <select 
-                      value={state.textPlacement}
-                      onChange={(e) => setState(prev => ({...prev, textPlacement: e.target.value}))}
-                      className="w-full bg-[#050506] border border-white/10 rounded-full px-6 py-4 text-[12px] font-bold tracking-widest outline-none focus:border-blue-600/50 transition-colors cursor-pointer appearance-none"
-                   >
-                     <option value="Behind Subject">Behind Subject (Depth)</option>
-                     <option value="Floating Above">Floating Above Head</option>
-                     <option value="Integrated Neon Sign">Integrated Neon Sign</option>
-                     <option value="Overlay Bottom">Overlay Bottom Center</option>
-                     <option value="Vertical Side">Vertical Side Layout</option>
-                   </select>
-                 </div>
               </div>
-              
-              <div className="flex justify-center">
-                 <button 
-                   onClick={onApplyBrandingClick}
-                   className="bg-[#2563eb]/20 hover:bg-[#2563eb]/40 border border-[#2563eb]/50 text-[#3b82f6] px-12 py-4 rounded-full font-black uppercase tracking-[0.2em] text-[10px] transition-all flex items-center gap-3"
-                 >
-                   <i className="fa-solid fa-wand-magic-sparkles"></i>
-                   Apply Style & Branding (3 Variants)
-                 </button>
+
+              {/* Product Upload */}
+              <div className="space-y-4">
+                <label className="block text-sm font-medium text-gray-300">Product Reference (Item)</label>
+                <div className="relative group aspect-[3/4] bg-gray-900 rounded-xl border-2 border-dashed border-gray-700 hover:border-purple-500/50 transition-all overflow-hidden">
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={(e) => handleImageUpload(e, 'product')}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                  {productImage ? (
+                    <img src={productImage} alt="Product" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 group-hover:text-purple-400 transition-colors">
+                      <Upload className="w-10 h-10 mb-2" />
+                      <span className="text-sm">Click to upload product</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="flex gap-4">
-              <button onClick={() => setStep(AppStep.UPLOAD)} className="px-10 py-5 border border-white/10 rounded-full font-black uppercase tracking-widest text-[11px] hover:bg-white/5 transition-colors">Back</button>
-              <button onClick={onGridClick} className="bg-[#1d4ed8] hover:bg-blue-600 px-16 py-5 rounded-full font-black uppercase tracking-widest text-[11px] shadow-xl transition-all transform hover:scale-105">
-                Generate Storyboard Grid
+            <div className="flex justify-center pt-4">
+              <button
+                onClick={handleCombineAssets}
+                disabled={!modelImage || !productImage || isProcessing}
+                className="group relative px-8 py-4 bg-white text-black font-bold rounded-full hover:bg-cyan-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isProcessing ? 'Processing...' : 'Generate Magic'}
+                <Wand2 className="w-4 h-4 group-hover:rotate-12 transition-transform" />
               </button>
             </div>
           </div>
         )}
 
-        {/* STORYBOARD GRID STEP */}
-        {step === AppStep.STORYBOARD && (
-          <div className="animate-in flex flex-col items-center">
-            <div className="bg-[#0c0c0e] p-6 rounded-[4.5rem] w-full max-w-md mb-12 shadow-2xl border border-white/5">
-              <img src={state.storyboardGrid!} className="rounded-[3.5rem] w-full" />
+        {/* STEP 2: REFINE */}
+        {currentStep === 'refine' && combinedImage && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-right-8 duration-500">
+            {/* Left: Image Preview */}
+            <div className="lg:col-span-1">
+              <div className="sticky top-24">
+                <div className="aspect-[9/16] rounded-2xl overflow-hidden border border-white/10 shadow-2xl relative group">
+                  <img src={combinedImage} alt="Result" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
+                    <button className="w-full py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg text-sm font-medium hover:bg-white/20">
+                      Download Preview
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <button onClick={onFinalRenderClick} className="bg-[#1d4ed8] hover:bg-blue-600 px-24 py-6 rounded-full font-black uppercase tracking-[0.2em] text-[12px] shadow-2xl">
-              Proceed to Final Render
-            </button>
+
+            {/* Right: Controls */}
+            <div className="lg:col-span-2 space-y-8">
+              <div>
+                <h2 className="text-2xl font-bold mb-2">Refine & Branding</h2>
+                <p className="text-gray-400">Customize the background, lighting, and add your neon branding.</p>
+              </div>
+
+              <div className="space-y-6 bg-gray-900/50 p-6 rounded-2xl border border-white/5">
+                {/* Branding Text */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-cyan-400 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" /> Neon Branding Text
+                  </label>
+                  <input 
+                    type="text" 
+                    value={neonText}
+                    onChange={(e) => setNeonText(e.target.value)}
+                    className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-cyan-500 transition-colors font-mono tracking-wider"
+                    placeholder="Enter brand name..."
+                  />
+                </div>
+
+                {/* Font Style */}
+                <div className="space-y-3">
+                   <label className="text-sm font-medium text-gray-300">Neon Font Style</label>
+                   <div className="grid grid-cols-3 gap-3">
+                     {['Cursive', 'Bold Sans', 'Cyberpunk', 'Minimal'].map((style) => (
+                       <button
+                         key={style}
+                         onClick={() => setSelectedStyle(style)}
+                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                           selectedStyle === style 
+                             ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' 
+                             : 'bg-black/30 text-gray-400 border border-white/5 hover:bg-white/5'
+                         }`}
+                       >
+                         {style}
+                       </button>
+                     ))}
+                   </div>
+                </div>
+
+                {/* Background Prompt */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-gray-300">Environment Prompt</label>
+                  <textarea 
+                    value={bgPrompt}
+                    onChange={(e) => setBgPrompt(e.target.value)}
+                    className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-cyan-500 transition-colors h-24 resize-none"
+                    placeholder="Describe the background..."
+                  />
+                </div>
+
+                {/* Lighting Presets */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                    <Sliders className="w-4 h-4" /> Studio Lighting
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {['Cinematic Warm', 'Cyberpunk Neon', 'Soft Natural', 'Studio Dark'].map((light) => (
+                      <button 
+                        key={light}
+                        onClick={() => setSelectedLighting(light)}
+                        className={`p-3 rounded-lg text-left text-sm border transition-all ${
+                          selectedLighting === light 
+                            ? 'bg-purple-500/10 border-purple-500/50 text-purple-200' 
+                            : 'bg-black/30 border-white/5 text-gray-400 hover:border-white/20'
+                        }`}
+                      >
+                        {light}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4 border-t border-white/10">
+                <button
+                  onClick={handleRefineImage}
+                  disabled={isProcessing}
+                  className="flex-1 px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg font-medium transition-colors"
+                >
+                  Apply Refinements
+                </button>
+                <button
+                  onClick={handleGenerateStoryboard}
+                  disabled={isProcessing}
+                  className="flex-1 px-6 py-3 bg-white text-black hover:bg-cyan-400 rounded-lg font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  Generate Storyboard <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* 3. FINAL RENDER (RESULTS) */}
-        {step === AppStep.RESULTS && (
-          <div className="animate-in grid grid-cols-12 gap-12">
-            
-            {/* Left Sidebar: Master Reference */}
-            <aside className="col-span-12 lg:col-span-3 space-y-10">
-              <div className="space-y-4">
-                <h3 className="text-[13px] font-black uppercase tracking-[0.3em] text-blue-500">Master Reference</h3>
-                <p className="text-[11px] font-medium text-zinc-500 leading-relaxed uppercase">
-                  System is slicing individual scenes from the master grid for motion rendering.
-                </p>
+        {/* STEP 3: STORYBOARD GRID */}
+        {currentStep === 'storyboard' && storyboardGrid && (
+          <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-500">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold">Storyboard Review</h2>
+                <p className="text-gray-400">AI has generated 9 unique variations. Ready to extract?</p>
               </div>
+              <button
+                onClick={handleProcessFinalScenes}
+                className="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-lg flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)]"
+              >
+                <LayoutGrid className="w-4 h-4" /> Process Final Scenes
+              </button>
+            </div>
 
-              <div className="bg-[#0c0c0e] p-4 rounded-[3rem] border border-white/5 overflow-hidden">
-                {state.storyboardGrid && <img src={state.storyboardGrid} className="rounded-[2rem] w-full aspect-[9/16] object-cover opacity-80" />}
-              </div>
-
-              <div className="bg-blue-600/10 border border-blue-500/20 rounded-full py-4 text-center">
-                <span className="text-blue-500 text-[10px] font-black uppercase tracking-[0.2em]">Extraction Active</span>
-              </div>
-            </aside>
-
-            {/* Right Main Content */}
-            <section className="col-span-12 lg:col-span-9 space-y-12">
+            <div className="relative aspect-square w-full max-w-2xl mx-auto rounded-xl overflow-hidden border-2 border-white/10 shadow-2xl">
+              <img src={storyboardGrid} alt="Grid" className="w-full h-full object-cover" />
               
-              <div className="flex flex-col md:flex-row justify-between items-end gap-6">
-                <div className="space-y-2">
-                  <h2 className="text-5xl font-black uppercase tracking-tighter italic">
-                    Final <span className="text-[#4dabf7] not-italic">Render</span>
-                  </h2>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-600">Individual Shot Selection & Motion Export</p>
-                </div>
-                
-                <div className="w-full md:w-1/3 space-y-4">
-                   <div className="flex justify-between items-end">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-blue-500">Global Progress: {state.extractionProgress}%</span>
-                   </div>
-                   <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-600 transition-all duration-700 shadow-[0_0_10px_rgba(37,99,235,0.5)]" style={{width: `${state.extractionProgress}%`}}></div>
-                   </div>
-                </div>
-              </div>
-
-              {/* Individual Shot Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-                {state.scenes.map((scene, idx) => (
-                  <div key={scene.id} className="bg-[#0c0c0e] border border-white/5 rounded-[3.5rem] p-6 flex flex-col gap-6 relative group overflow-hidden">
-                    
-                    {/* Portrait Image Viewport with Animated Border if processing */}
-                    <div className={`aspect-[9/16] rounded-[2.5rem] overflow-hidden relative shadow-2xl ${
-                      (scene.isExtracting || scene.isUpscaling || scene.isGeneratingVideo) ? 'animated-gradient-border' : 'border border-white/5'
-                    }`}>
-                      <div className="bg-inner-card w-full h-full relative z-10">
-                        {scene.image ? (
-                            scene.videoUrl ? 
-                            <video src={scene.videoUrl} autoPlay loop muted className="w-full h-full object-cover" /> :
-                            <img src={scene.image} className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-zinc-900/10">
-                            {scene.isExtracting ? (
-                                <>
-                                <div className="w-8 h-8 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
-                                <span className="text-[9px] font-black uppercase text-zinc-600 tracking-widest">Slicing Shot</span>
-                                </>
-                            ) : (
-                                <i className="fa-solid fa-image-slash text-zinc-800 text-2xl"></i>
-                            )}
-                            </div>
-                        )}
-                      </div>
-
-                      {/* INDIVIDUAL OVERLAY FOR ACTIONS - No extra border here, relying on container border */}
-                      {(scene.isExtracting || scene.isUpscaling || scene.isGeneratingVideo) && (
-                        <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col items-center justify-center animate-in">
-                          <div className="w-10 h-10 border-2 border-blue-600/10 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-500">Processing</p>
-                        </div>
-                      )}
-
-                      {/* Tool Actions */}
-                      {scene.image && (
-                        <div className="absolute top-6 left-1/2 -translate-x-1/2 flex gap-3 z-40 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
-                           <div className="flex bg-black/60 backdrop-blur-md rounded-2xl p-1 border border-white/10">
-                             <button onClick={() => onUpscale(idx, '2K')} className="px-3 py-1.5 text-[8px] font-black uppercase rounded-xl hover:bg-blue-600 transition-colors">2K</button>
-                             <button onClick={() => onUpscale(idx, '4K')} className="px-3 py-1.5 text-[8px] font-black uppercase rounded-xl hover:bg-blue-600 transition-colors">4K</button>
-                           </div>
-                           <button onClick={() => onRepair(idx)} className="w-10 h-10 bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl flex items-center justify-center hover:bg-blue-600 transition-colors">
-                             <i className="fa-solid fa-wand-magic-sparkles text-[12px]"></i>
-                           </button>
-                        </div>
-                      )}
-
-                      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/80 px-6 py-2 rounded-full border border-white/10 text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl z-40">
-                        Shot 0{idx + 1}
-                      </div>
-                    </div>
-
-                    {/* Prompts Section */}
-                    <div className="space-y-4">
-                      <div className="bg-[#070708] rounded-2xl p-4 border border-white/5">
-                        <textarea 
-                          value={scenePrompts[idx]}
-                          onChange={(e) => {const p = [...scenePrompts]; p[idx] = e.target.value; setScenePrompts(p);}}
-                          className="w-full bg-transparent text-[11px] font-medium text-zinc-400 h-20 resize-none outline-none leading-relaxed placeholder:text-zinc-800"
-                          placeholder="Subtle cinematic motion, elegant model moves naturally."
-                        />
-                      </div>
-
-                      <button 
-                        onClick={() => onVideo(idx)}
-                        disabled={!scene.image || scene.isGeneratingVideo}
-                        className="w-full bg-[#12141a] hover:bg-[#1d4ed8] border border-white/5 py-5 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-10 active:scale-95 shadow-xl"
-                      >
-                        {scene.isGeneratingVideo ? 'Processing...' : 'Generate Motion'}
-                      </button>
-                    </div>
+              {/* Overlay Grid Lines for visual effect */}
+              <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
+                {[...Array(9)].map((_, i) => (
+                  <div key={i} className="border border-white/20 flex items-center justify-center">
+                    <span className="text-white/30 text-4xl font-black">{i + 1}</span>
                   </div>
                 ))}
               </div>
-            </section>
+            </div>
           </div>
         )}
-      </main>
 
-      {/* Key Selection Dialog */}
-      {showKeyModal && (
-        <div className="fixed inset-0 z-[300] bg-black/95 backdrop-blur-3xl flex items-center justify-center p-6">
-          <div className="bg-[#0c0c0e] p-12 rounded-[4rem] w-full max-w-sm border border-blue-600/20 text-center space-y-8 shadow-2xl">
-            <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center mx-auto border border-blue-500/20">
-               <i className="fa-solid fa-cloud-bolt text-blue-500 text-3xl"></i>
+        {/* STEP 4: FINAL RENDER */}
+        {currentStep === 'final' && scenes.length > 0 && (
+          <div className="space-y-12 animate-in fade-in duration-700">
+            <div className="text-center space-y-4 mb-12">
+               <h2 className="text-4xl font-black tracking-tighter text-white">FINAL RENDER</h2>
+               <p className="text-cyan-400 font-mono text-sm tracking-widest uppercase">Individual Shot Selection & Motion Export</p>
+               <div className="w-24 h-1 bg-gradient-to-r from-cyan-500 to-purple-600 mx-auto rounded-full"></div>
             </div>
-            <div>
-              <h2 className="text-2xl font-black uppercase tracking-tighter mb-2 italic">Connect Studio</h2>
-              <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Select a paid GCP project to enable production quality rendering.</p>
-              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="inline-block mt-4 text-blue-500 text-[9px] font-black uppercase tracking-widest hover:underline">Billing Info</a>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {scenes.map((scene) => (
+                <div key={scene.id} className="group relative bg-gray-900 rounded-2xl overflow-hidden border border-white/10 hover:border-cyan-500/50 transition-all hover:-translate-y-1 duration-300 shadow-xl">
+                  {/* Image/Video Display */}
+                  <div className="aspect-[9/16] relative bg-black">
+                    {scene.videoUrl ? (
+                      <video 
+                        src={scene.videoUrl} 
+                        className="w-full h-full object-cover" 
+                        autoPlay 
+                        loop 
+                        muted 
+                        playsInline
+                      />
+                    ) : (
+                      <img src={scene.imageUrl} alt={`Scene ${scene.id}`} className="w-full h-full object-cover" />
+                    )}
+
+                    {/* Status Badge */}
+                    <div className="absolute top-4 left-4">
+                       <span className="px-2 py-1 bg-black/60 backdrop-blur-md border border-white/10 rounded text-xs font-mono text-white">
+                         SHOT 0{scene.id + 1}
+                       </span>
+                    </div>
+
+                    {/* Loading Overlay for Video Gen */}
+                    {scene.isGeneratingVideo && (
+                      <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-3 backdrop-blur-sm z-10">
+                        <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-xs font-mono text-cyan-400 animate-pulse">GENERATING MOTION...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action Bar */}
+                  <div className="p-4 bg-gray-900 border-t border-white/5 space-y-3">
+                     <p className="text-xs text-gray-500 line-clamp-2">
+                       Subtle cinematic motion, elegant model moves naturally.
+                     </p>
+                     
+                     {!scene.videoUrl ? (
+                       <button
+                         onClick={() => handleGenerateMotion(scene.id)}
+                         disabled={scene.isGeneratingVideo}
+                         className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 group-hover:bg-cyan-500/10 group-hover:text-cyan-400 group-hover:border-cyan-500/30"
+                       >
+                         <Play className="w-3 h-3 fill-current" /> GENERATE MOTION
+                       </button>
+                     ) : (
+                       <div className="flex gap-2">
+                         <a 
+                           href={scene.videoUrl} 
+                           download={`scene-${scene.id}.mp4`}
+                           className="flex-1 py-3 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded-lg text-sm font-medium text-green-400 transition-all flex items-center justify-center gap-2"
+                         >
+                           <Download className="w-3 h-3" /> SAVE VIDEO
+                         </a>
+                       </div>
+                     )}
+                  </div>
+                </div>
+              ))}
             </div>
-            <button 
-              onClick={async () => { 
-                const aistudio = (window as any).aistudio; 
-                if (aistudio) { 
-                  await aistudio.openSelectKey(); 
-                  setShowKeyModal(false); 
-                } 
-              }}
-              className="w-full bg-blue-600 py-6 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-[0_10px_30px_rgba(37,99,235,0.4)]"
-            >
-              Select API Key
-            </button>
           </div>
-        </div>
-      )}
+        )}
+
+      </main>
     </div>
   );
-};
+}
 
 export default App;
