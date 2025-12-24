@@ -6,6 +6,7 @@ export interface SceneFrame {
   isExtracting: boolean;
   isGeneratingVideo: boolean;
   isUpscaling: boolean;
+  isEditing: boolean; // New state for edit loading
 }
 
 export interface GenerationState {
@@ -20,6 +21,7 @@ export interface GenerationState {
   textPlacement: string;
   storyboardGrid: string | null;
   scenes: SceneFrame[];
+  editPrompts: string[]; // New state for edit inputs
   extractionProgress: number;
 }
 

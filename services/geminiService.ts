@@ -289,6 +289,32 @@ export const repairImage = async (imageBase64: string, prompt: string): Promise<
   });
 };
 
+// --- NEW: EDIT SCENE (Pose, Gesture, Angle) ---
+export const editSceneImage = async (imageBase64: string, prompt: string): Promise<string> => {
+  return callWithRetry(async (ai) => {
+    const response = await ai.models.generateContent({
+      model: PRO_IMAGE_MODEL,
+      contents: {
+        parts: [
+          { inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } },
+          { 
+            text: `IMAGE EDITING TASK:
+- INSTRUCTION: ${prompt}
+- CONSTRAINT: Keep the original Subject (Face & Product) and Style identical. 
+- ACTION: Modify only the pose, gesture, or camera angle as requested.
+- OUTPUT: Photorealistic 9:16 image.` 
+          }
+        ]
+      },
+      config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
+    });
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+    }
+    throw new Error("FAILED_EDIT");
+  });
+};
+
 export const generateSceneVideo = async (imageBase64: string, prompt: string): Promise<string> => {
   return callWithRetry(async (ai) => {
     let operation = await ai.models.generateVideos({

@@ -10,7 +10,8 @@ import {
   generateSceneVideo,
   upscaleScene,
   repairImage,
-  validateApiKey // Import the new validation function
+  editSceneImage, // Import new edit function
+  validateApiKey 
 } from './services/geminiService.ts';
 
 // --- COMPONENTS ---
@@ -99,8 +100,10 @@ const App: React.FC = () => {
       videoUrl: null,
       isExtracting: false,
       isGeneratingVideo: false,
-      isUpscaling: false
+      isUpscaling: false,
+      isEditing: false
     })),
+    editPrompts: Array(9).fill(""),
     extractionProgress: 0,
   });
 
@@ -296,6 +299,17 @@ const App: React.FC = () => {
     try {
       const img = await repairImage(state.scenes[idx].image!, repairPrompts[idx]);
       setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, image: img, isExtracting: false } : s) }));
+    } catch (e) { handleError(e); }
+  };
+
+  const onEditImage = async (idx: number) => {
+    const prompt = state.editPrompts[idx];
+    if (!prompt || !state.scenes[idx].image) return;
+
+    setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, isEditing: true } : s) }));
+    try {
+      const img = await editSceneImage(state.scenes[idx].image!, prompt);
+      setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, image: img, isEditing: false } : s) }));
     } catch (e) { handleError(e); }
   };
 
@@ -588,7 +602,7 @@ const App: React.FC = () => {
                   <div key={scene.id} className="bg-[#0c0c0e] border border-white/5 rounded-[2.5rem] md:rounded-[3.5rem] p-5 md:p-6 flex flex-col gap-5 md:gap-6 relative group overflow-hidden">
                     
                     <div className={`aspect-[9/16] rounded-[2rem] md:rounded-[2.5rem] overflow-hidden relative shadow-2xl ${
-                      (scene.isExtracting || scene.isUpscaling || scene.isGeneratingVideo) ? 'animated-gradient-border' : 'border border-white/5'
+                      (scene.isExtracting || scene.isUpscaling || scene.isGeneratingVideo || scene.isEditing) ? 'animated-gradient-border' : 'border border-white/5'
                     }`}>
                       <div className="bg-inner-card w-full h-full relative z-10">
                         {scene.image ? (
@@ -609,7 +623,7 @@ const App: React.FC = () => {
                         )}
                       </div>
 
-                      {(scene.isExtracting || scene.isUpscaling || scene.isGeneratingVideo) && (
+                      {(scene.isExtracting || scene.isUpscaling || scene.isGeneratingVideo || scene.isEditing) && (
                         <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col items-center justify-center animate-in">
                           <div className="w-10 h-10 border-2 border-blue-600/10 border-t-blue-600 rounded-full animate-spin mb-4"></div>
                           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-500">Processing</p>
@@ -656,11 +670,37 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="space-y-4">
+                      {/* NEW: IMAGE EDITING INPUT */}
+                      <div className="flex gap-2">
+                        <div className="bg-[#12141a] rounded-xl flex-1 border border-white/5 relative group/input">
+                           <input 
+                             type="text"
+                             value={state.editPrompts?.[idx] || ""}
+                             onChange={(e) => {
+                               const newPrompts = [...state.editPrompts];
+                               newPrompts[idx] = e.target.value;
+                               setState(prev => ({...prev, editPrompts: newPrompts}));
+                             }}
+                             placeholder="Edit pose, angle (e.g. Side profile, Zoom out)..."
+                             className="w-full bg-transparent text-[10px] py-3 px-4 outline-none placeholder:text-zinc-700 text-zinc-300 font-medium tracking-wide"
+                           />
+                           <i className="fa-solid fa-pen-nib absolute right-3 top-1/2 -translate-y-1/2 text-zinc-700 text-xs"></i>
+                        </div>
+                        <button 
+                           onClick={() => onEditImage(idx)}
+                           disabled={!state.scenes[idx].image || state.scenes[idx].isEditing || !state.editPrompts[idx]}
+                           className="bg-[#1e1e24] hover:bg-blue-600 border border-white/5 rounded-xl w-10 flex items-center justify-center transition-all disabled:opacity-30 disabled:hover:bg-[#1e1e24] shadow-lg"
+                           title="Apply Image Edit"
+                        >
+                            <i className="fa-solid fa-check text-[10px] text-white"></i>
+                        </button>
+                      </div>
+
                       <div className="bg-[#070708] rounded-2xl p-4 border border-white/5">
                         <textarea 
                           value={scenePrompts[idx]}
                           onChange={(e) => {const p = [...scenePrompts]; p[idx] = e.target.value; setScenePrompts(p);}}
-                          className="w-full bg-transparent text-[11px] font-medium text-zinc-400 h-20 resize-none outline-none leading-relaxed placeholder:text-zinc-800"
+                          className="w-full bg-transparent text-[11px] font-medium text-zinc-400 h-16 resize-none outline-none leading-relaxed placeholder:text-zinc-800"
                           placeholder="Subtle cinematic motion..."
                         />
                       </div>
