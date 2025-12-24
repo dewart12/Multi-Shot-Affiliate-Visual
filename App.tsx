@@ -385,43 +385,63 @@ const App: React.FC = () => {
 
         {/* UPLOAD STEP */}
         {step === AppStep.UPLOAD && (
-          <div className="animate-in flex flex-col items-center max-w-5xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 w-full">
-              {[{id:'model', label:'Model Base'}, {id:'product', label:'Product Item'}].map(u => (
-                <label key={u.id} className="aspect-[16/9] md:aspect-[16/7] bg-[#0c0c0e] rounded-[2rem] md:rounded-[3rem] border border-white/5 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500/40 transition-all overflow-hidden relative group">
-                  <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, u.id as any)} />
-                  {state[`${u.id}Image` as keyof GenerationState] ? (
-                    <img src={state[`${u.id}Image` as keyof GenerationState] as string} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                  ) : (
-                    <div className="text-center opacity-40 group-hover:opacity-100 transition-opacity p-4">
-                      <div className="w-12 h-12 md:w-16 md:h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i className="fa-solid fa-plus text-xl"></i>
-                      </div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em]">{u.label}</p>
-                    </div>
-                  )}
-                </label>
-              ))}
+          <div className="animate-in flex flex-col items-center max-w-5xl mx-auto w-full px-4 md:px-0">
+            
+            {/* Wrapper Container for Image Inputs */}
+            <div className="w-full bg-[#0c0c0e] border border-white/5 rounded-[2.5rem] md:rounded-[3.5rem] p-4 md:p-8 shadow-2xl relative mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 w-full">
+                  {[{id:'model', label:'Model Base'}, {id:'product', label:'Product Item'}].map(u => (
+                    <label key={u.id} className="relative aspect-[3/4] md:aspect-[3/4] bg-[#050506] rounded-[2rem] border border-white/5 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500/40 hover:shadow-[0_0_30px_rgba(37,99,235,0.15)] transition-all duration-500 overflow-hidden group">
+                      <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, u.id as any)} />
+                      
+                      {state[`${u.id}Image` as keyof GenerationState] ? (
+                        <div className="w-full h-full relative">
+                           <img src={state[`${u.id}Image` as keyof GenerationState] as string} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                           <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-300"></div>
+                        </div>
+                      ) : (
+                        <div className="text-center opacity-40 group-hover:opacity-100 transition-all duration-300 p-4 transform group-hover:-translate-y-1">
+                          <div className="w-14 h-14 md:w-16 md:h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 border border-white/5 group-hover:border-blue-500/50 group-hover:bg-blue-500/10 transition-all duration-300 shadow-lg">
+                            <i className="fa-solid fa-plus text-xl text-zinc-400 group-hover:text-blue-400 transition-colors"></i>
+                          </div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover:text-white transition-colors">{u.label}</p>
+                        </div>
+                      )}
+
+                      {/* Hover Overlay for Re-upload if image exists */}
+                      {state[`${u.id}Image` as keyof GenerationState] && (
+                          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                              <div className="bg-white/10 rounded-full px-5 py-2 backdrop-blur-md border border-white/20">
+                                  <span className="text-[10px] font-bold uppercase tracking-widest text-white">Change Image</span>
+                              </div>
+                          </div>
+                      )}
+                    </label>
+                  ))}
+                </div>
             </div>
 
-            <div className="w-full mt-8 md:mt-10 bg-[#0c0c0e] rounded-[2rem] border border-white/5 p-6 shadow-xl">
-               <label className="text-[11px] font-black uppercase tracking-widest text-zinc-500 block mb-4">
+            <div className="w-full bg-[#0c0c0e] rounded-[2rem] border border-white/5 p-6 shadow-xl relative overflow-hidden group">
+               <div className="absolute top-0 left-0 w-1 h-full bg-blue-600/50 transform scale-y-0 group-hover:scale-y-100 transition-transform duration-500 origin-top"></div>
+               <label className="text-[11px] font-black uppercase tracking-widest text-zinc-500 block mb-4 flex items-center gap-2">
+                 <i className="fa-solid fa-pen-fancy text-blue-500/50"></i>
                  Custom Integration Instruction
                </label>
                <textarea 
                   value={state.promptInstruction}
                   onChange={(e) => setState(prev => ({...prev, promptInstruction: e.target.value}))}
                   placeholder="Describe exactly how the model should interact with the product..."
-                  className="w-full bg-[#050506] text-[13px] text-white rounded-xl p-4 border border-white/10 outline-none focus:border-blue-600/50 h-24 resize-none transition-colors"
+                  className="w-full bg-[#050506] text-[13px] text-white rounded-xl p-4 border border-white/10 outline-none focus:border-blue-600/50 h-24 resize-none transition-colors placeholder:text-zinc-700"
                />
             </div>
 
             <button 
               disabled={!state.modelImage || !state.productImage} 
               onClick={onRefineClick} 
-              className="mt-8 md:mt-12 w-full md:w-auto bg-[#1d4ed8] hover:bg-blue-600 disabled:opacity-20 px-8 md:px-24 py-5 md:py-6 rounded-full font-black uppercase tracking-[0.2em] text-[12px] shadow-[0_15px_40px_rgba(37,99,235,0.3)] transition-all active:scale-95"
+              className="mt-8 md:mt-12 w-full md:w-auto bg-[#1d4ed8] hover:bg-blue-600 disabled:opacity-20 disabled:cursor-not-allowed px-12 md:px-24 py-5 md:py-6 rounded-full font-black uppercase tracking-[0.2em] text-[12px] shadow-[0_15px_40px_rgba(37,99,235,0.3)] transition-all active:scale-95 border border-white/5 relative overflow-hidden group"
             >
-              Start Refinement
+              <span className="relative z-10">Start Refinement</span>
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </button>
           </div>
         )}
