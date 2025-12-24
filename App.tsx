@@ -74,6 +74,10 @@ const App: React.FC = () => {
   const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
   const [loadingMsg, setLoadingMsg] = useState('');
   const [quotaError, setQuotaError] = useState<string | null>(null);
+  const [useCustomKey, setUseCustomKey] = useState<boolean>(false);
+  
+  // State for the BYOK Input in the modal
+  const [tempApiKey, setTempApiKey] = useState('');
   
   const [state, setState] = useState<GenerationState>({
     modelImage: null,
@@ -100,15 +104,43 @@ const App: React.FC = () => {
   const [scenePrompts, setScenePrompts] = useState<string[]>(Array(9).fill("Subtle cinematic motion, elegant model moves naturally."));
   const [repairPrompts, setRepairPrompts] = useState<string[]>(Array(9).fill("Fix any glitches and enhance facial details."));
 
+  const checkKeys = async () => {
+    // Check local BYOK first
+    const localKey = localStorage.getItem('USER_GEMINI_API_KEY');
+    if (localKey && localKey.length > 5) {
+      setUseCustomKey(true);
+      setShowKeyModal(false);
+      return;
+    }
+    
+    setUseCustomKey(false);
+    
+    // Fallback to Env/IDX check
+    const aistudio = (window as any).aistudio;
+    if (aistudio && !(await aistudio.hasSelectedApiKey())) {
+      setShowKeyModal(true);
+    } else {
+      setShowKeyModal(false);
+    }
+  };
+
   useEffect(() => {
-    const checkKey = async () => {
-      const aistudio = (window as any).aistudio;
-      if (aistudio && !(await aistudio.hasSelectedApiKey())) {
-        setShowKeyModal(true);
-      }
-    };
-    checkKey();
+    checkKeys();
   }, []);
+
+  const handleSaveCustomKey = () => {
+    if (tempApiKey.trim().length > 10) {
+      localStorage.setItem('USER_GEMINI_API_KEY', tempApiKey.trim());
+      checkKeys();
+    } else {
+      alert("Please enter a valid API Key");
+    }
+  };
+
+  const handleDisconnect = () => {
+      localStorage.removeItem('USER_GEMINI_API_KEY');
+      window.location.reload(); // Reload to reset state fully
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'model' | 'product') => {
     const file = e.target.files?.[0];
@@ -126,7 +158,10 @@ const App: React.FC = () => {
     if (e.message === "QUOTA_LIMIT_ZERO") {
       setQuotaError("YOUR API QUOTA IS ZERO. Please upgrade your Google Cloud Project to a PAID plan and enable billing for Gemini 3 Pro & Veo 3.1.");
     } else if (e.message === "API_KEY_INVALID") {
-      setShowKeyModal(true);
+      alert("API Key is invalid or expired. Please re-authenticate.");
+      // Force open modal by clearing key and re-checking
+      localStorage.removeItem('USER_GEMINI_API_KEY');
+      checkKeys();
     } else {
       alert("Error occurred: " + (e.message || "Unknown error"));
     }
@@ -243,15 +278,28 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050506] text-white selection:bg-blue-500/30 font-sans pb-20">
+    <div className="min-h-screen bg-[#050506] text-white selection:bg-blue-500/30 font-sans pb-20 relative overflow-x-hidden">
+      
       {/* 1. Header Section */}
-      <header className="pt-8 md:pt-12 pb-6 md:pb-8 text-center space-y-4 px-4">
-        <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tight leading-tight">UGC AI Affiliate Storyboard Scene</h1>
-        <div className="flex justify-center">
-          <div className="bg-[#0c1a11] border border-[#1e3a24] rounded-full px-4 py-1.5 md:px-5 md:py-2 flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#10b981] shadow-[0_0_8px_#10b981]"></div>
-            <span className="text-[#10b981] text-[9px] md:text-[10px] font-bold uppercase tracking-widest">API Key Connected</span>
-          </div>
+      <header className="pt-8 md:pt-12 pb-6 md:pb-8 relative px-4">
+        
+        {/* Status Indicator / Disconnect */}
+        <div className="absolute top-8 right-4 md:right-8 z-50">
+           <div 
+             onClick={handleDisconnect}
+             className={`bg-[#0c1a11] border ${useCustomKey ? 'border-blue-900/40 bg-blue-950/20' : 'border-[#1e3a24]'} rounded-full px-4 py-2 flex items-center gap-2 transition-all duration-300 cursor-pointer hover:opacity-80 group`}
+             title="Click to Disconnect / Change Key"
+           >
+                <div className={`w-1.5 h-1.5 rounded-full ${useCustomKey ? 'bg-blue-400 shadow-[0_0_8px_#3b82f6]' : 'bg-[#10b981] shadow-[0_0_8px_#10b981]'} `}></div>
+                <span className={`${useCustomKey ? 'text-blue-400' : 'text-[#10b981]'} text-[9px] font-bold uppercase tracking-widest`}>
+                    {useCustomKey ? 'Custom Key' : 'Project Key'}
+                </span>
+                <i className="fa-solid fa-power-off text-[10px] text-zinc-500 group-hover:text-red-400 ml-2 transition-colors"></i>
+           </div>
+        </div>
+
+        <div className="text-center space-y-4">
+            <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tight leading-tight">UGC AI Affiliate Storyboard Scene</h1>
         </div>
       </header>
 
@@ -561,30 +609,73 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Key Selection Dialog */}
-      {showKeyModal && (
+      {/* ENTRY GATE / ACCESS CONTROL */}
+      {showKeyModal && !useCustomKey && (
         <div className="fixed inset-0 z-[300] bg-black/95 backdrop-blur-3xl flex items-center justify-center p-6">
-          <div className="bg-[#0c0c0e] p-8 md:p-12 rounded-[3rem] md:rounded-[4rem] w-full max-w-sm border border-blue-600/20 text-center space-y-8 shadow-2xl">
+          <div className="bg-[#0c0c0e] p-8 md:p-12 rounded-[3rem] md:rounded-[4rem] w-full max-w-md border border-blue-600/20 text-center space-y-10 shadow-2xl relative overflow-hidden">
+            
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-green-500"></div>
+
             <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-600/10 rounded-full flex items-center justify-center mx-auto border border-blue-500/20">
-               <i className="fa-solid fa-cloud-bolt text-blue-500 text-2xl md:text-3xl"></i>
+               <i className="fa-solid fa-fingerprint text-blue-500 text-2xl md:text-3xl"></i>
             </div>
+            
             <div>
-              <h2 className="text-xl md:text-2xl font-black uppercase tracking-tighter mb-2 italic">Connect Studio</h2>
-              <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Select a paid GCP project to enable production quality rendering.</p>
-              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="inline-block mt-4 text-blue-500 text-[9px] font-black uppercase tracking-widest hover:underline">Billing Info</a>
+              <h2 className="text-xl md:text-2xl font-black uppercase tracking-tighter mb-3 italic">System Access</h2>
+              <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Choose your connection method to initialize production protocols.</p>
             </div>
-            <button 
-              onClick={async () => { 
-                const aistudio = (window as any).aistudio; 
-                if (aistudio) { 
-                  await aistudio.openSelectKey(); 
-                  setShowKeyModal(false); 
-                } 
-              }}
-              className="w-full bg-blue-600 py-5 md:py-6 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-[0_10px_30px_rgba(37,99,235,0.4)]"
-            >
-              Select API Key
-            </button>
+
+            {/* OPTION 1: GOOGLE PROJECT */}
+            <div className="space-y-3">
+               <button 
+                onClick={async () => { 
+                    const aistudio = (window as any).aistudio; 
+                    if (aistudio) { 
+                    await aistudio.openSelectKey(); 
+                    setShowKeyModal(false); 
+                    } 
+                }}
+                className="w-full bg-blue-600 py-4 md:py-5 rounded-2xl font-black uppercase text-[11px] tracking-widest shadow-[0_10px_30px_rgba(37,99,235,0.4)] hover:bg-blue-500 transition-colors flex items-center justify-center gap-3"
+                >
+                <i className="fa-brands fa-google"></i>
+                Connect Google Cloud Project
+                </button>
+                <div className="text-[9px] text-zinc-600">
+                    <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="hover:text-blue-500 underline decoration-dashed">Billing Info</a>
+                </div>
+            </div>
+
+            <div className="relative flex items-center gap-4 opacity-50">
+               <div className="h-px bg-white/10 flex-1"></div>
+               <span className="text-[9px] font-bold uppercase text-zinc-600">OR</span>
+               <div className="h-px bg-white/10 flex-1"></div>
+            </div>
+
+            {/* OPTION 2: CUSTOM KEY (BYOK) */}
+            <div className="space-y-3">
+               <div className="flex gap-2">
+                 <div className="relative flex-1">
+                    <i className="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 text-xs"></i>
+                    <input 
+                        type="password" 
+                        value={tempApiKey}
+                        onChange={(e) => setTempApiKey(e.target.value)}
+                        placeholder="Paste Gemini API Key"
+                        className="w-full bg-[#050506] border border-white/10 rounded-xl py-4 pl-10 pr-4 text-[11px] font-mono text-white outline-none focus:border-blue-600/50 transition-colors placeholder:text-zinc-700"
+                    />
+                 </div>
+                 <button 
+                    onClick={handleSaveCustomKey}
+                    className="bg-[#1e1e24] hover:bg-zinc-800 border border-white/5 text-white w-12 rounded-xl flex items-center justify-center transition-colors"
+                 >
+                    <i className="fa-solid fa-arrow-right text-xs"></i>
+                 </button>
+               </div>
+               <p className="text-[9px] text-zinc-600 uppercase tracking-wide">
+                   Stored locally. <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-zinc-500 hover:text-white underline">Get Key</a>
+               </p>
+            </div>
+
           </div>
         </div>
       )}

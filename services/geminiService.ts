@@ -6,12 +6,24 @@ const VEO_MODEL = 'veo-3.1-fast-generate-preview';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Helper to get the best available API Key
+const getEffectiveApiKey = (): string => {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('USER_GEMINI_API_KEY');
+    if (stored && stored.length > 5) return stored;
+  }
+  return process.env.API_KEY as string;
+};
+
 async function callWithRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>, maxRetries = 3): Promise<T> {
   let lastError: any;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      // Create new instance to ensure fresh state/key usage
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+      // Create new instance with effective key (BYOK or Env)
+      const apiKey = getEffectiveApiKey();
+      if (!apiKey) throw new Error("API_KEY_MISSING");
+      
+      const ai = new GoogleGenAI({ apiKey });
       return await fn(ai);
     } catch (error: any) {
       lastError = error;
@@ -27,7 +39,7 @@ async function callWithRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>, maxRetries 
         }
       }
       
-      if (errorStr.includes("not found") || errorStr.includes("api key")) {
+      if (errorStr.includes("not found") || errorStr.includes("api key") || errorStr.includes("api_key_missing")) {
         throw new Error("API_KEY_INVALID");
       }
       
@@ -279,7 +291,11 @@ export const generateSceneVideo = async (imageBase64: string, prompt: string): P
       operation = await ai.operations.getVideosOperation({ operation: operation });
     }
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+    
+    // Explicitly use effective API key for the download fetch as well
+    const apiKey = getEffectiveApiKey();
+    const response = await fetch(`${downloadLink}&key=${apiKey}`);
+    
     const blob = await response.blob();
     return URL.createObjectURL(blob);
   });
