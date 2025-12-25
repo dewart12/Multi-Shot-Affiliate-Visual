@@ -71,6 +71,46 @@ const SciFiProgressBar: React.FC<{ progress: number }> = ({ progress }) => {
   );
 };
 
+// Categorized prompts for better accuracy
+const CATEGORIZED_PROMPTS = {
+  "Fashion Wearables": [
+    { 
+      label: "Tops / Atasan", 
+      text: "CLOTHING REPLACE: Swap the model's upper garment with the Product Image. Warp the fabric texture to fit the model's torso anatomy perfectly. Preserve skin tone, hands, and neck. Match lighting and fabric folds." 
+    },
+    { 
+      label: "Bottoms / Celana", 
+      text: "CLOTHING REPLACE: Swap the model's pants/skirt with the Product Image. Align the waistband naturally. Ensure the fabric drapes correctly over the legs. Keep the model's upper body and shoes intact." 
+    },
+    { 
+      label: "Muslim / Hijab", 
+      text: "MODEST FASHION: Integrate the product (Hijab/Gamis) onto the model. Ensure a loose, modest fit. If swapping Hijab, frame the face naturally without altering facial features. Fabric should flow elegantly." 
+    },
+    { 
+      label: "Full Outfit", 
+      text: "FULL OUTFIT SWAP: Dress the model in the complete set from the Product Image. Retain the model's pose exactly. Re-light the fabric to match the environment. Ensure high-fidelity texture mapping." 
+    }
+  ],
+  "Objects & Lifestyle": [
+    { 
+      label: "Handheld / Gadget", 
+      text: "NATURAL GRIP: Place the product in the model's hand. CRITICAL: Generate realistic fingers wrapping around the object with correct tension. Ensure the object scale is accurate (e.g., phone vs tablet). Add contact shadows." 
+    },
+    { 
+      label: "Tabletop / Home", 
+      text: "SCENE PLACEMENT: Place the product on the surface in front of the model. Match the perspective (vanishing point) and depth of field. Cast realistic shadows onto the table consistent with scene lighting." 
+    },
+    { 
+      label: "Beauty / Skincare", 
+      text: "BEAUTY SHOT: Model holding the product near the face. Focus on skin texture. Ensure the product label is legible and facing the camera. Do not obstruct key facial features." 
+    },
+    { 
+      label: "Footwear / Shoes", 
+      text: "SHOE SWAP: Replace the model's shoes with the Product Image. Ensure the feet are grounded correctly on the floor. Match the angle of the foot/ankle to the shoe perspective." 
+    }
+  ]
+};
+
 const App: React.FC = () => {
   const [step, setStep] = useState<AppStep>(AppStep.UPLOAD);
   const [showKeyModal, setShowKeyModal] = useState<boolean>(true); // Default true to force check
@@ -270,7 +310,8 @@ const App: React.FC = () => {
     for (let i = 0; i < 9; i++) {
       setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: true } : s) }));
       try {
-        const img = await extractCell(state.storyboardGrid!, i);
+        // Pass modelImage (reference face) to extraction
+        const img = await extractCell(state.storyboardGrid!, i, state.modelImage || undefined);
         setState(prev => ({
           ...prev,
           scenes: prev.scenes.map(s => s.id === i ? { ...s, image: img, isExtracting: false } : s),
@@ -297,7 +338,8 @@ const App: React.FC = () => {
   const onRepair = async (idx: number) => {
     setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, isExtracting: true } : s) }));
     try {
-      const img = await repairImage(state.scenes[idx].image!, repairPrompts[idx]);
+      // Pass modelImage to repair function
+      const img = await repairImage(state.scenes[idx].image!, repairPrompts[idx], state.modelImage || undefined);
       setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, image: img, isExtracting: false } : s) }));
     } catch (e) { handleError(e); }
   };
@@ -308,7 +350,8 @@ const App: React.FC = () => {
 
     setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, isEditing: true } : s) }));
     try {
-      const img = await editSceneImage(state.scenes[idx].image!, prompt);
+      // Pass modelImage to edit function
+      const img = await editSceneImage(state.scenes[idx].image!, prompt, state.modelImage || undefined);
       setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, image: img, isEditing: false } : s) }));
     } catch (e) { handleError(e); }
   };
@@ -446,15 +489,40 @@ const App: React.FC = () => {
 
             <div className="w-full bg-[#0c0c0e] rounded-[2rem] border border-white/5 p-6 shadow-xl relative overflow-hidden group">
                <div className="absolute top-0 left-0 w-1 h-full bg-blue-600/50 transform scale-y-0 group-hover:scale-y-100 transition-transform duration-500 origin-top"></div>
-               <label className="text-[11px] font-black uppercase tracking-widest text-zinc-500 block mb-4 flex items-center gap-2">
-                 <i className="fa-solid fa-pen-fancy text-blue-500/50"></i>
-                 Custom Integration Instruction
+               
+               <label className="text-[11px] font-black uppercase tracking-widest text-zinc-500 block mb-4 flex items-center justify-between">
+                 <div className="flex items-center gap-2">
+                    <i className="fa-solid fa-wand-sparkles text-blue-500"></i>
+                    Auto-Optimization Prompt (Select Category)
+                 </div>
                </label>
+               
+               {/* CATEGORIZED RECOMMENDATION CHIPS */}
+               <div className="flex flex-col gap-4 mb-4">
+                  {Object.entries(CATEGORIZED_PROMPTS).map(([category, items]) => (
+                    <div key={category} className="space-y-2">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-600 ml-1">{category}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {items.map((rec, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setState(prev => ({...prev, promptInstruction: rec.text}))}
+                            className="bg-white/5 hover:bg-blue-600/20 border border-white/10 hover:border-blue-500/30 rounded-lg px-3 py-2 text-[9px] font-bold uppercase tracking-wider text-zinc-400 hover:text-blue-400 transition-all active:scale-95 text-left"
+                            title={rec.text}
+                          >
+                            {rec.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+               </div>
+
                <textarea 
                   value={state.promptInstruction}
                   onChange={(e) => setState(prev => ({...prev, promptInstruction: e.target.value}))}
-                  placeholder="Describe exactly how the model should interact with the product..."
-                  className="w-full bg-[#050506] text-[13px] text-white rounded-xl p-4 border border-white/10 outline-none focus:border-blue-600/50 h-24 resize-none transition-colors placeholder:text-zinc-700"
+                  placeholder="Or describe exactly how the model should interact with the product..."
+                  className="w-full bg-[#050506] text-[12px] font-mono text-blue-200/80 rounded-xl p-4 border border-white/10 outline-none focus:border-blue-600/50 h-32 resize-none transition-colors placeholder:text-zinc-700/50 leading-relaxed"
                />
             </div>
 

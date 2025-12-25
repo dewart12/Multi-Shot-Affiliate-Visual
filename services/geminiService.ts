@@ -135,7 +135,7 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
             text: `TASK: INTELLIGENT PRODUCT TRY-ON.
 1. ANALYZE Image 2 to identify the product category.
 2. INTEGRATE the product onto the person from Image 1 naturally.
-3. IDENTITY: Ensure the face is 100% identical to Image 1.
+3. IDENTITY CRITICAL: The output face MUST BE 100% IDENTICAL to the person in Image 1. Do not hallucinate a new face.
 4. USER INSTRUCTION: ${instruction || 'Natural fit'}.
 5. OUTPUT: Professional 9:16 high-fashion catalog photo.` }
         ]
@@ -169,6 +169,7 @@ export const generateBrandingVariations = async (baseImage: string, text: string
           { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
           { text: `SCENE MASTERING (LOCK SUBJECT):
 - SUBJECT: Keep person/product EXACTLY as input.
+- FACE: Do not change the facial features.
 - BACKGROUND: ${style}.
 - BRANDING: Neon sign "${text}" (${fontStyle}) placed ${placement}.
 - QUALITY: Photorealistic, 9:16, 1K.` }
@@ -200,7 +201,7 @@ export const generateStoryboardGrid = async (baseImage: string, text: string, st
           { text: `PROFESSIONAL 3x3 STORYBOARD GRID:
 - Use the provided person. Generate 9 DISTINCT poses.
 - NO REPETITION. Use Close-up, Medium, Full-body shots.
-- CONSISTENCY: Keep Face & Product identical.
+- IDENTITY CONSISTENCY: The face in all 9 panels MUST match the input person exactly.
 - BRANDING: Neon sign "${text}" in background.
 - OUTPUT: 3x3 Grid Image, 9:16 Aspect Ratio, High Res.
 - CRITICAL: Add thin solid black divider lines.` }
@@ -217,25 +218,38 @@ export const generateStoryboardGrid = async (baseImage: string, text: string, st
 };
 
 // --- MAIN EXTRACTION LOGIC ---
-export const extractCell = async (gridImage: string, index: number): Promise<string> => {
+export const extractCell = async (gridImage: string, index: number, referenceImage?: string): Promise<string> => {
   try {
     const croppedLowRes = await cropImageLocally(gridImage, index);
 
     return callWithRetry(async (ai) => {
-      const response = await ai.models.generateContent({
-        model: PRO_IMAGE_MODEL,
-        contents: {
-          parts: [
-            { inlineData: { data: croppedLowRes.split(',')[1], mimeType: 'image/png' } },
-            { 
-              text: `IMAGE RESTORATION TASK:
+      const parts: any[] = [];
+      
+      // If reference image provided, add it first as strict guidance
+      if (referenceImage) {
+        parts.push({ inlineData: { data: referenceImage.split(',')[1], mimeType: 'image/png' } });
+      }
+      
+      parts.push({ inlineData: { data: croppedLowRes.split(',')[1], mimeType: 'image/png' } });
+      
+      const prompt = referenceImage 
+        ? `TASK: HIGH-FIDELITY RESTORATION.
+Input 1: REFERENCE FACE (Strict Identity Source).
+Input 2: LOW-RES CROP (Target to upscale).
+GOAL: Upscale Input 2 to 1K resolution.
+CRITICAL: Reconstruct the face in Input 2 to perfectly match the identity in Input 1.
+Preserve the pose, expression, and product from Input 2.`
+        : `IMAGE RESTORATION TASK:
 - INPUT: A low-resolution crop from a storyboard.
 - GOAL: Upscale this to a sharp, high-quality 9:16 portrait.
 - STRICT RULE: Do NOT change the pose, face expression, or product details. Just add details, fix blur, and improve lighting.
-- OUTPUT: 1K Resolution, Photorealistic.` 
-            }
-          ]
-        },
+- OUTPUT: 1K Resolution, Photorealistic.`;
+
+      parts.push({ text: prompt });
+
+      const response = await ai.models.generateContent({
+        model: PRO_IMAGE_MODEL,
+        contents: { parts },
         config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
       });
 
@@ -258,7 +272,7 @@ export const upscaleScene = async (imageBase64: string, size: '2K' | '4K'): Prom
       contents: {
         parts: [
           { inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } },
-          { text: `UPSCALE TASK: Increase resolution to ${size}. Enhance textures and sharpen details.` }
+          { text: `UPSCALE TASK: Increase resolution to ${size}. Enhance textures and sharpen details. Maintain facial identity.` }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: size } }
@@ -270,16 +284,27 @@ export const upscaleScene = async (imageBase64: string, size: '2K' | '4K'): Prom
   });
 };
 
-export const repairImage = async (imageBase64: string, prompt: string): Promise<string> => {
+export const repairImage = async (imageBase64: string, prompt: string, referenceImage?: string): Promise<string> => {
   return callWithRetry(async (ai) => {
+    const parts: any[] = [];
+    if (referenceImage) {
+        parts.push({ inlineData: { data: referenceImage.split(',')[1], mimeType: 'image/png' } });
+    }
+    parts.push({ inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } });
+    
+    const textPrompt = referenceImage
+        ? `AI IMAGE REPAIR:
+Input 1: REFERENCE IDENTITY.
+Input 2: IMAGE TO REPAIR.
+INSTRUCTION: ${prompt}.
+CRITICAL: Ensure the face matches Input 1. Correct anatomy and lighting.`
+        : `AI IMAGE REPAIR: ${prompt}. Correct anatomy and lighting while maintaining identity.`;
+
+    parts.push({ text: textPrompt });
+
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
-      contents: {
-        parts: [
-          { inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } },
-          { text: `AI IMAGE REPAIR: ${prompt}. Correct anatomy and lighting while maintaining identity.` }
-        ]
-      },
+      contents: { parts },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -290,22 +315,37 @@ export const repairImage = async (imageBase64: string, prompt: string): Promise<
 };
 
 // --- NEW: EDIT SCENE (Pose, Gesture, Angle) ---
-export const editSceneImage = async (imageBase64: string, prompt: string): Promise<string> => {
+export const editSceneImage = async (imageBase64: string, prompt: string, referenceImage?: string): Promise<string> => {
   return callWithRetry(async (ai) => {
-    const response = await ai.models.generateContent({
-      model: PRO_IMAGE_MODEL,
-      contents: {
-        parts: [
-          { inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } },
-          { 
-            text: `IMAGE EDITING TASK:
+    const parts: any[] = [];
+    
+    // Add reference for identity preservation
+    if (referenceImage) {
+        parts.push({ inlineData: { data: referenceImage.split(',')[1], mimeType: 'image/png' } });
+    }
+    
+    parts.push({ inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } });
+    
+    const textPrompt = referenceImage 
+        ? `IMAGE EDITING TASK:
+- Input 1: REFERENCE FACE (Strict Identity).
+- Input 2: SCENE TO EDIT.
+- INSTRUCTION: ${prompt}
+- CONSTRAINT: You MUST preserve the facial identity from Input 1.
+- CONSTRAINT: Keep the product/clothing from Input 2.
+- ACTION: Modify only the pose, gesture, or camera angle as requested.
+- OUTPUT: Photorealistic 9:16 image.`
+        : `IMAGE EDITING TASK:
 - INSTRUCTION: ${prompt}
 - CONSTRAINT: Keep the original Subject (Face & Product) and Style identical. 
 - ACTION: Modify only the pose, gesture, or camera angle as requested.
-- OUTPUT: Photorealistic 9:16 image.` 
-          }
-        ]
-      },
+- OUTPUT: Photorealistic 9:16 image.`;
+
+    parts.push({ text: textPrompt });
+
+    const response = await ai.models.generateContent({
+      model: PRO_IMAGE_MODEL,
+      contents: { parts },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
