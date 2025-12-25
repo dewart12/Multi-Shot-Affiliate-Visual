@@ -13,6 +13,9 @@ export interface SceneFrame {
   dialoguePrompt?: string;
   jsonMode?: boolean;
   jsonPrompt?: string;
+  // Audio & Playback Controls
+  isVideoMuted?: boolean;
+  videoDuration?: string;
 }
 
 export interface GenerationState {

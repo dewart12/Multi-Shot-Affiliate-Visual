@@ -229,7 +229,9 @@ const App: React.FC = () => {
       bgMusicPrompt: '',
       dialoguePrompt: '',
       jsonMode: false,
-      jsonPrompt: `{\n  "motion": "Cinematic pan",\n  "music": "Lo-fi beat",\n  "dialogue": "..."\n}`
+      jsonPrompt: `{\n  "motion": "Cinematic pan",\n  "music": "Lo-fi beat",\n  "dialogue": "..."\n}`,
+      isVideoMuted: true,
+      videoDuration: '00:00'
     })),
     editPrompts: Array(9).fill(""),
     extractionProgress: 0,
@@ -492,6 +494,13 @@ const App: React.FC = () => {
 
   const updateSceneField = (idx: number, field: keyof GenerationState['scenes'][0], value: any) => {
       setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, [field]: value } : s) }));
+  };
+
+  const formatDuration = (seconds: number) => {
+      if (isNaN(seconds)) return "00:00";
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
   return (
@@ -817,7 +826,17 @@ const App: React.FC = () => {
                       <div className="bg-inner-card w-full h-full relative z-10">
                         {scene.image ? (
                             scene.videoUrl ? 
-                            <video src={scene.videoUrl} autoPlay loop muted className="w-full h-full object-cover" /> :
+                            <video 
+                                src={scene.videoUrl} 
+                                autoPlay 
+                                loop 
+                                muted={scene.isVideoMuted} 
+                                onLoadedMetadata={(e) => {
+                                    const duration = e.currentTarget.duration;
+                                    updateSceneField(idx, 'videoDuration', formatDuration(duration));
+                                }}
+                                className="w-full h-full object-cover" 
+                            /> :
                             <img src={scene.image} className="w-full h-full object-cover" />
                         ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-zinc-900/10">
@@ -885,6 +904,22 @@ const App: React.FC = () => {
                              </button>
 
                            </div>
+                        </div>
+                      )}
+                      
+                      {/* Video Controls Overlay */}
+                      {scene.videoUrl && (
+                        <div className="absolute bottom-3 right-3 z-50 flex items-center gap-2 animate-in">
+                            <span className="text-[9px] font-mono font-bold bg-black/60 px-2 py-1 rounded-md backdrop-blur-sm border border-white/10 text-white shadow-lg">
+                                {scene.videoDuration || "00:00"}
+                            </span>
+                            <button 
+                                onClick={() => updateSceneField(idx, 'isVideoMuted', !scene.isVideoMuted)}
+                                className="w-7 h-7 flex items-center justify-center bg-black/60 rounded-full backdrop-blur-sm border border-white/10 hover:bg-white/20 transition-colors shadow-lg"
+                                title={scene.isVideoMuted ? "Unmute" : "Mute"}
+                            >
+                                <i className={`fa-solid ${scene.isVideoMuted ? 'fa-volume-xmark' : 'fa-volume-high'} text-[10px] text-white`}></i>
+                            </button>
                         </div>
                       )}
 
@@ -967,6 +1002,14 @@ const App: React.FC = () => {
                                 </div>
                             </div>
                          )}
+                      </div>
+
+                      {/* WARNING FOR API LIMITS */}
+                      <div className="flex items-start gap-2 p-2 bg-yellow-900/10 border border-yellow-700/30 rounded-lg">
+                         <i className="fa-solid fa-triangle-exclamation text-yellow-600 text-[10px] mt-0.5"></i>
+                         <p className="text-[9px] text-yellow-600/80 leading-relaxed font-medium">
+                           Warning: Do not spam generate to avoid hitting API limits.
+                         </p>
                       </div>
 
                       <button 
