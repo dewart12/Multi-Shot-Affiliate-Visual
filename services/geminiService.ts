@@ -166,6 +166,12 @@ export const generateRefinementVariations = async (modelBase64: string, productB
 
 export const generateBrandingVariations = async (baseImage: string, text: string, style: string, fontStyle: string, placement: string): Promise<string[]> => {
   const generateOne = () => callWithRetry(async (ai) => {
+    
+    // Check if branding text is provided. If not, explicitly ask to NOT generate text.
+    const brandingLine = text && text.trim().length > 0 
+      ? `- BRANDING: Neon sign "${text}" (${fontStyle}) placed ${placement}.`
+      : `- BRANDING: NO TEXT. Do not generate any text or neon signs in the background.`;
+
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
       contents: {
@@ -175,7 +181,7 @@ export const generateBrandingVariations = async (baseImage: string, text: string
 - SUBJECT: Keep person/product EXACTLY as input.
 - FACE: Do not change the facial features.
 - BACKGROUND: ${style}.
-- BRANDING: Neon sign "${text}" (${fontStyle}) placed ${placement}.
+${brandingLine}
 - QUALITY: Photorealistic, 9:16, 1K.` }
         ]
       },
@@ -197,6 +203,12 @@ export const generateBrandingVariations = async (baseImage: string, text: string
 
 export const generateStoryboardGrid = async (baseImage: string, text: string, style: string): Promise<string> => {
   return callWithRetry(async (ai) => {
+    
+    // Check if branding text is provided. If not, explicitly ask to NOT generate text.
+    const brandingLine = text && text.trim().length > 0
+      ? `- BRANDING: Neon sign "${text}" in background.`
+      : `- BRANDING: NO TEXT. Do not generate any text or neon signs in the background.`;
+
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
       contents: {
@@ -206,7 +218,7 @@ export const generateStoryboardGrid = async (baseImage: string, text: string, st
 - Use the provided person. Generate 9 DISTINCT poses.
 - NO REPETITION. Use Close-up, Medium, Full-body shots.
 - IDENTITY CONSISTENCY: The face in all 9 panels MUST match the input person exactly.
-- BRANDING: Neon sign "${text}" in background.
+${brandingLine}
 - OUTPUT: 3x3 Grid Image, 9:16 Aspect Ratio, High Res.
 - CRITICAL: Add thin solid black divider lines.` }
         ]
@@ -359,18 +371,42 @@ export const editSceneImage = async (imageBase64: string, prompt: string, refere
   });
 };
 
-export const generateSceneVideo = async (imageBase64: string, prompt: string): Promise<string> => {
+export const generateSceneVideo = async (
+  imageBase64: string, 
+  prompt: string, 
+  onProgress?: (progress: number) => void
+): Promise<string> => {
   return callWithRetry(async (ai) => {
+    let progress = 0;
+    if (onProgress) onProgress(5); // Start
+
     let operation = await ai.models.generateVideos({
       model: VEO_MODEL,
       prompt: `${prompt}. Maintain absolute consistency. Cinematic slow motion.`,
       image: { imageBytes: imageBase64.split(',')[1], mimeType: 'image/png' },
       config: { numberOfVideos: 1, resolution: '720p', aspectRatio: '9:16' }
     });
-    while (!operation.done) {
-      await sleep(10000);
-      operation = await ai.operations.getVideosOperation({ operation: operation });
+    
+    // Simulation of progress since API does not return %
+    const progressInterval = setInterval(() => {
+        if (progress < 90) {
+            progress += Math.floor(Math.random() * 5) + 2;
+            if (progress > 90) progress = 90;
+            if (onProgress) onProgress(progress);
+        }
+    }, 1000);
+
+    try {
+        while (!operation.done) {
+          await sleep(5000);
+          operation = await ai.operations.getVideosOperation({ operation: operation });
+        }
+    } finally {
+        clearInterval(progressInterval);
     }
+    
+    if (onProgress) onProgress(100);
+
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
     
     // Explicitly use effective API key for the download fetch as well

@@ -7,6 +7,12 @@ export interface SceneFrame {
   isGeneratingVideo: boolean;
   isUpscaling: boolean;
   isEditing: boolean; // New state for edit loading
+  // Video Generation Advanced Fields
+  videoProgress: number;
+  bgMusicPrompt?: string;
+  dialoguePrompt?: string;
+  jsonMode?: boolean;
+  jsonPrompt?: string;
 }
 
 export interface GenerationState {

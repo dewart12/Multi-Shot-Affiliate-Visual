@@ -212,7 +212,7 @@ const App: React.FC = () => {
     promptInstruction: '',
     combinedImage: null,
     combinedCandidates: null,
-    brandingText: 'LUXE',
+    brandingText: '', // Changed from 'LUXE' to empty string
     stylePrompt: 'High-end minimalist studio with soft moody lighting',
     fontStyle: 'Modern Sans',
     textPlacement: 'Behind Subject',
@@ -224,7 +224,12 @@ const App: React.FC = () => {
       isExtracting: false,
       isGeneratingVideo: false,
       isUpscaling: false,
-      isEditing: false
+      isEditing: false,
+      videoProgress: 0,
+      bgMusicPrompt: '',
+      dialoguePrompt: '',
+      jsonMode: false,
+      jsonPrompt: `{\n  "motion": "Cinematic pan",\n  "music": "Lo-fi beat",\n  "dialogue": "..."\n}`
     })),
     editPrompts: Array(9).fill(""),
     extractionProgress: 0,
@@ -352,7 +357,7 @@ const App: React.FC = () => {
     try {
       const res = await generateBrandingVariations(
         state.combinedImage,
-        state.brandingText || "LUXE",
+        state.brandingText, // Removed 'LUXE' fallback to allow empty text
         state.stylePrompt || "Cinematic",
         state.fontStyle || "Modern Sans",
         state.textPlacement || "Behind Subject"
@@ -375,7 +380,7 @@ const App: React.FC = () => {
     try {
       const res = await generateStoryboardGrid(
         state.combinedImage, 
-        state.brandingText || "LUXE", 
+        state.brandingText, // Removed 'LUXE' fallback to allow empty text
         state.stylePrompt || "Cinematic"
       );
       setState(prev => ({ ...prev, storyboardGrid: res }));
@@ -440,11 +445,53 @@ const App: React.FC = () => {
   };
 
   const onVideo = async (idx: number) => {
-    setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, isGeneratingVideo: true } : s) }));
+    const scene = state.scenes[idx];
+    setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, isGeneratingVideo: true, videoProgress: 0 } : s) }));
+    
+    // Construct Prompt
+    let finalPrompt = "";
+    if (scene.jsonMode && scene.jsonPrompt) {
+        // If JSON mode, we try to use the JSON structure but since the API expects text, 
+        // we'll pass it as text or try to parse if structure allows.
+        // For Veo, we will just pass the JSON string as the prompt description for now,
+        // trusting the user's advanced prompting or parse it if we wanted specific fields.
+        // However, user said "prompt full json", implying they might paste JSON code.
+        // We will send it as string.
+        finalPrompt = scene.jsonPrompt;
+    } else {
+        const motion = scenePrompts[idx];
+        const music = scene.bgMusicPrompt;
+        const dialogue = scene.dialoguePrompt;
+        
+        const parts = [];
+        if (motion) parts.push(`Motion: ${motion}`);
+        if (music) parts.push(`Background Music: ${music}`);
+        if (dialogue) parts.push(`Dialogue: ${dialogue}`);
+        
+        finalPrompt = parts.join(". ");
+    }
+
     try {
-      const url = await generateSceneVideo(state.scenes[idx].image!, scenePrompts[idx]);
-      setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, videoUrl: url, isGeneratingVideo: false } : s) }));
-    } catch (e) { handleError(e); }
+      const url = await generateSceneVideo(
+          state.scenes[idx].image!, 
+          finalPrompt,
+          (progress) => {
+             setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, videoProgress: progress } : s) }));
+          }
+      );
+      setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, videoUrl: url, isGeneratingVideo: false, videoProgress: 100 } : s) }));
+    } catch (e) { 
+        handleError(e); 
+        setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, isGeneratingVideo: false, videoProgress: 0 } : s) }));
+    }
+  };
+
+  const toggleJsonMode = (idx: number) => {
+     setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, jsonMode: !s.jsonMode } : s) }));
+  };
+
+  const updateSceneField = (idx: number, field: keyof GenerationState['scenes'][0], value: any) => {
+      setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, [field]: value } : s) }));
   };
 
   return (
@@ -788,8 +835,22 @@ const App: React.FC = () => {
 
                       {(scene.isExtracting || scene.isUpscaling || scene.isGeneratingVideo || scene.isEditing) && (
                         <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col items-center justify-center animate-in">
-                          <div className="w-10 h-10 border-2 border-blue-600/10 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-500">Processing</p>
+                          {scene.isGeneratingVideo ? (
+                              <div className="w-3/4 px-4 text-center">
+                                  <div className="mb-2 flex justify-between text-[8px] font-bold uppercase tracking-widest text-zinc-400">
+                                      <span>Rendering Motion</span>
+                                      <span>{scene.videoProgress}%</span>
+                                  </div>
+                                  <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
+                                      <div className="h-full bg-blue-500 transition-all duration-300" style={{width: `${scene.videoProgress}%`}}></div>
+                                  </div>
+                              </div>
+                          ) : (
+                              <>
+                              <div className="w-10 h-10 border-2 border-blue-600/10 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+                              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-500">Processing</p>
+                              </>
+                          )}
                         </div>
                       )}
 
@@ -859,13 +920,53 @@ const App: React.FC = () => {
                         </button>
                       </div>
 
-                      <div className="bg-[#070708] rounded-2xl p-4 border border-white/5">
-                        <textarea 
-                          value={scenePrompts[idx]}
-                          onChange={(e) => {const p = [...scenePrompts]; p[idx] = e.target.value; setScenePrompts(p);}}
-                          className="w-full bg-transparent text-[11px] font-medium text-zinc-400 h-16 resize-none outline-none leading-relaxed placeholder:text-zinc-800"
-                          placeholder="Subtle cinematic motion..."
-                        />
+                      {/* ADVANCED VIDEO GENERATION CONTROLS */}
+                      <div className="bg-[#070708] rounded-2xl p-4 border border-white/5 relative">
+                         {/* Toggle JSON Mode */}
+                         <div className="flex justify-between items-center mb-3">
+                            <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">Motion Control</span>
+                            <div className="flex items-center gap-2 cursor-pointer" onClick={() => toggleJsonMode(idx)}>
+                                <span className={`text-[8px] font-bold uppercase tracking-widest ${scene.jsonMode ? 'text-zinc-500' : 'text-blue-400'}`}>Simple</span>
+                                <div className={`w-8 h-4 rounded-full p-0.5 transition-colors ${scene.jsonMode ? 'bg-blue-600' : 'bg-zinc-700'}`}>
+                                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${scene.jsonMode ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                </div>
+                                <span className={`text-[8px] font-bold uppercase tracking-widest ${scene.jsonMode ? 'text-blue-400' : 'text-zinc-500'}`}>JSON</span>
+                            </div>
+                         </div>
+                        
+                         {scene.jsonMode ? (
+                            <textarea 
+                              value={scene.jsonPrompt}
+                              onChange={(e) => updateSceneField(idx, 'jsonPrompt', e.target.value)}
+                              className="w-full bg-transparent text-[10px] font-mono text-blue-200/80 h-32 resize-none outline-none leading-relaxed placeholder:text-zinc-800"
+                              placeholder='{"motion": "...", "music": "...", "dialogue": "..."}'
+                            />
+                         ) : (
+                            <div className="space-y-3">
+                                <textarea 
+                                    value={scenePrompts[idx]}
+                                    onChange={(e) => {const p = [...scenePrompts]; p[idx] = e.target.value; setScenePrompts(p);}}
+                                    className="w-full bg-transparent text-[11px] font-medium text-zinc-400 h-16 resize-none outline-none leading-relaxed placeholder:text-zinc-700 border-b border-white/5 pb-2"
+                                    placeholder="Motion prompt (e.g. Cinematic pan)..."
+                                />
+                                <div className="grid grid-cols-2 gap-3">
+                                    <input 
+                                        type="text" 
+                                        value={scene.bgMusicPrompt || ""}
+                                        onChange={(e) => updateSceneField(idx, 'bgMusicPrompt', e.target.value)}
+                                        placeholder="Bg Music (e.g. Jazz)"
+                                        className="bg-transparent border border-white/10 rounded-lg px-2 py-1.5 text-[10px] outline-none focus:border-blue-500/50 placeholder:text-zinc-700"
+                                    />
+                                    <input 
+                                        type="text" 
+                                        value={scene.dialoguePrompt || ""}
+                                        onChange={(e) => updateSceneField(idx, 'dialoguePrompt', e.target.value)}
+                                        placeholder="Dialogue (optional)"
+                                        className="bg-transparent border border-white/10 rounded-lg px-2 py-1.5 text-[10px] outline-none focus:border-blue-500/50 placeholder:text-zinc-700"
+                                    />
+                                </div>
+                            </div>
+                         )}
                       </div>
 
                       <button 
