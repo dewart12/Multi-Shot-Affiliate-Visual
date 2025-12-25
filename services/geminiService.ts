@@ -132,12 +132,16 @@ export const generateCombinedImage = async (modelBase64: string, productBase64: 
           { inlineData: { data: modelBase64.split(',')[1], mimeType: 'image/png' } },
           { inlineData: { data: productBase64.split(',')[1], mimeType: 'image/png' } },
           {
-            text: `TASK: INTELLIGENT PRODUCT TRY-ON.
-1. ANALYZE Image 2 to identify the product category.
-2. INTEGRATE the product onto the person from Image 1 naturally.
-3. IDENTITY CRITICAL: The output face MUST BE 100% IDENTICAL to the person in Image 1. Do not hallucinate a new face.
-4. USER INSTRUCTION: ${instruction || 'Natural fit'}.
-5. OUTPUT: Professional 9:16 high-fashion catalog photo.` }
+            text: `TASK: FLAWLESS VIRTUAL TRY-ON & PRODUCT INTEGRATION.
+1. INPUTS: Person (Image 1) + Product (Image 2).
+2. ACTION: Dress the person in the product OR place the product in their hand/scene naturally.
+3. STRICT REQUIREMENTS:
+   - ANATOMY: Perfect fingers, hands, and body proportions. NO GLITCHES, NO DISTORTED LIMBS, NO FLOATING PARTS.
+   - IDENTITY: The face MUST be the exact person from Image 1.
+   - TEXTURE: High-fidelity fabric/material rendering. Shadows must match the scene.
+   - INTEGRATION: No visible cut-out edges.
+4. INSTRUCTION: ${instruction || 'Ensure a realistic, high-quality fit'}.
+5. OUTPUT: Photorealistic 9:16 high-fashion catalog photo.` }
         ]
       },
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }

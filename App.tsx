@@ -71,6 +71,52 @@ const SciFiProgressBar: React.FC<{ progress: number }> = ({ progress }) => {
   );
 };
 
+// --- NEW LOADING SCREEN COMPONENT ---
+const LoadingScreen: React.FC<{ message: string }> = ({ message }) => {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    // Simulate realistic progress behavior for generic API calls
+    let current = 0;
+    const interval = setInterval(() => {
+        // Random increment to feel organic
+        current += (Math.random() * 1.5) + 0.5; 
+        if (current > 95) current = 95; // Cap at 95% until done
+        setProgress(Math.round(current));
+    }, 400); 
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-4 text-center animate-in">
+        <div className="w-full max-w-lg p-8 rounded-[3rem] border border-white/5 bg-[#0c0c0e]/90 shadow-2xl relative overflow-hidden">
+            {/* Decorative background gradients */}
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 animate-pulse"></div>
+            <div className="absolute -left-20 -top-20 w-60 h-60 bg-blue-600/10 rounded-full blur-[80px]"></div>
+            <div className="absolute -right-20 -bottom-20 w-60 h-60 bg-purple-600/10 rounded-full blur-[80px]"></div>
+
+            <div className="relative z-10 space-y-8">
+                <div className="space-y-3">
+                     <div className="w-12 h-12 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4"></div>
+                     <h3 className="text-[12px] font-black uppercase tracking-[0.3em] text-white">AI Processing</h3>
+                     <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest animate-pulse">{message}</p>
+                </div>
+                
+                <div className="px-2 md:px-6">
+                     <SciFiProgressBar progress={progress} />
+                </div>
+                
+                <div className="flex justify-between text-[8px] font-mono text-zinc-600 uppercase tracking-widest opacity-60">
+                    <span>Model: Gemini-3-Pro</span>
+                    <span>Task: High-Fidelity Gen</span>
+                </div>
+            </div>
+        </div>
+    </div>
+  );
+};
+
 // Categorized prompts for better accuracy
 const CATEGORIZED_PROMPTS = {
   "Fashion Wearables": [
@@ -466,12 +512,7 @@ const App: React.FC = () => {
       </nav>
 
       <main className="max-w-[1440px] mx-auto px-4 md:px-6 lg:px-12">
-        {loadingMsg && (
-          <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 text-center">
-            <div className="w-16 h-16 border-2 border-blue-600/20 border-t-blue-600 rounded-full animate-spin mb-6"></div>
-            <p className="text-[12px] font-black uppercase tracking-[0.4em] text-blue-500">{loadingMsg}</p>
-          </div>
-        )}
+        {loadingMsg && <LoadingScreen message={loadingMsg} />}
 
         {/* Global Error Notice */}
         {quotaError && (
@@ -579,7 +620,7 @@ const App: React.FC = () => {
           <div className="animate-in flex flex-col items-center w-full">
             <h3 className="text-[12px] md:text-[14px] font-black uppercase tracking-[0.4em] text-zinc-500 mb-8 md:mb-10 text-center">Select Preferred Variation</h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 w-full max-w-6xl mb-12 px-4 md:px-0">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 w-full max-w-6xl mb-8 px-4 md:px-0">
               {(state.combinedCandidates || [state.combinedImage]).filter(Boolean).map((img, idx) => (
                 <div 
                   key={idx}
@@ -601,6 +642,17 @@ const App: React.FC = () => {
                   )}
                 </div>
               ))}
+            </div>
+
+            {/* NEW: REGENERATE BUTTON IF GLITCHY */}
+            <div className="flex justify-center mb-12 w-full max-w-lg mx-auto">
+               <button 
+                  onClick={onRefineClick} 
+                  className="flex items-center gap-3 px-8 py-3 bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 hover:border-red-500/60 rounded-full transition-all group w-full justify-center"
+               >
+                  <i className="fa-solid fa-rotate-right text-red-500 group-hover:rotate-180 transition-transform duration-500"></i>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-red-400 group-hover:text-red-300">Regenerate Variations (Fix Glitches)</span>
+               </button>
             </div>
 
             <div className="w-full max-w-4xl bg-[#0c0c0e] border border-white/5 rounded-[2.5rem] md:rounded-[3rem] p-6 md:p-8 mb-12 shadow-2xl relative">
