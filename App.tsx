@@ -111,6 +111,43 @@ const CATEGORIZED_PROMPTS = {
   ]
 };
 
+// --- NEW CONSTANTS FOR CREATIVE DIRECTION ---
+const BACKGROUND_PRESETS = [
+  "High-end Minimalist Studio",
+  "Urban City Bokeh",
+  "Luxury Interior",
+  "Soft Natural Light",
+  "Cyberpunk Neon",
+  "Abstract Gradient",
+  "Beige / Warm Tones",
+  "Nature / Outdoor Garden"
+];
+
+const FONT_OPTIONS = [
+  "Modern Sans",
+  "Elegant Serif",
+  "Bold Graffiti",
+  "Neon Script",
+  "Futuristic Mono",
+  "Vintage Typewriter",
+  "Handwritten Signature",
+  "3D Chrome",
+  "Gothic Bold",
+  "Minimalist Thin"
+];
+
+const PLACEMENT_OPTIONS = [
+  "Behind Subject",
+  "Floating Above",
+  "Integrated Neon Sign",
+  "Overlay Bottom",
+  "Vertical Side",
+  "Floor Reflection",
+  "Halo Effect",
+  "Wrapped Around Subject",
+  "Magazine Header"
+];
+
 const App: React.FC = () => {
   const [step, setStep] = useState<AppStep>(AppStep.UPLOAD);
   const [showKeyModal, setShowKeyModal] = useState<boolean>(true); // Default true to force check
@@ -574,28 +611,34 @@ const App: React.FC = () => {
                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 ml-4">Neon Brand Text</label>
                    <input type="text" value={state.brandingText} onChange={(e) => setState(prev => ({...prev, brandingText: e.target.value}))} placeholder="e.g. ALANA" className="w-full bg-[#050506] border border-white/10 rounded-full px-6 py-4 text-[12px] font-bold tracking-widest outline-none focus:border-blue-600/50 transition-colors placeholder:text-zinc-800"/>
                  </div>
+                 
                  <div className="space-y-3">
-                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 ml-4">Background / Atmosphere</label>
-                   <input type="text" value={state.stylePrompt} onChange={(e) => setState(prev => ({...prev, stylePrompt: e.target.value}))} placeholder="e.g. Cyberpunk City" className="w-full bg-[#050506] border border-white/10 rounded-full px-6 py-4 text-[12px] font-bold tracking-widest outline-none focus:border-blue-600/50 transition-colors placeholder:text-zinc-800"/>
+                   <div className="flex justify-between items-center px-4">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Background / Atmosphere</label>
+                   </div>
+                   <div className="space-y-2">
+                      <input type="text" value={state.stylePrompt} onChange={(e) => setState(prev => ({...prev, stylePrompt: e.target.value}))} placeholder="e.g. Cyberpunk City" className="w-full bg-[#050506] border border-white/10 rounded-3xl px-6 py-4 text-[12px] font-bold tracking-widest outline-none focus:border-blue-600/50 transition-colors placeholder:text-zinc-800"/>
+                      <div className="flex flex-wrap gap-2 px-2">
+                         {BACKGROUND_PRESETS.map((bg, i) => (
+                           <button key={i} onClick={() => setState(prev => ({...prev, stylePrompt: bg}))} className="bg-[#18181b] hover:bg-blue-900/20 border border-white/5 hover:border-blue-500/30 rounded-full px-3 py-1.5 text-[9px] text-zinc-400 hover:text-blue-400 font-medium transition-colors">
+                             {bg}
+                           </button>
+                         ))}
+                      </div>
+                   </div>
                  </div>
+
                  <div className="space-y-3">
                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 ml-4">Font Style</label>
                    <select value={state.fontStyle} onChange={(e) => setState(prev => ({...prev, fontStyle: e.target.value}))} className="w-full bg-[#050506] border border-white/10 rounded-full px-6 py-4 text-[12px] font-bold tracking-widest outline-none focus:border-blue-600/50 transition-colors cursor-pointer appearance-none">
-                     <option value="Modern Sans">Modern Sans</option>
-                     <option value="Elegant Serif">Elegant Serif</option>
-                     <option value="Bold Graffiti">Bold Graffiti</option>
-                     <option value="Neon Script">Neon Script</option>
-                     <option value="Futuristic Mono">Futuristic Mono</option>
+                     {FONT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                    </select>
                  </div>
+                 
                  <div className="space-y-3">
                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 ml-4">Text Placement</label>
                    <select value={state.textPlacement} onChange={(e) => setState(prev => ({...prev, textPlacement: e.target.value}))} className="w-full bg-[#050506] border border-white/10 rounded-full px-6 py-4 text-[12px] font-bold tracking-widest outline-none focus:border-blue-600/50 transition-colors cursor-pointer appearance-none">
-                     <option value="Behind Subject">Behind Subject</option>
-                     <option value="Floating Above">Floating Above</option>
-                     <option value="Integrated Neon Sign">Integrated Neon</option>
-                     <option value="Overlay Bottom">Overlay Bottom</option>
-                     <option value="Vertical Side">Vertical Side</option>
+                     {PLACEMENT_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                    </select>
                  </div>
               </div>
