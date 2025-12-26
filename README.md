@@ -1,52 +1,11 @@
-Sip, **README yang kamu tunjukin itu SEBENARNYA SUDAH BENAR**, tapi ✋
-👉 **itu README versi “developer”**, **belum versi “pembeli / non-tech”**.
 
-Kalau kamu **jual source dalam bentuk ZIP**, README perlu **diterjemahin + dipermudah** supaya:
-
-* pembeli awam ngerti
-* gak salah paham
-* gak minta refund cuma gara-gara “kok ribet”
-
-Di bawah ini aku **breakdown README kamu → lalu aku kasih versi JUALAN yang siap kamu pakai**.
-
----
-
-## 1️⃣ Arti README Kamu (Versi Developer)
-
-Isi README kamu itu intinya:
-
-> “Ini app dari Google AI Studio, bisa dijalankan lokal pakai Node.js,
-> install dependency, set Gemini API key, lalu run.”
-
-Secara teknis: ✅ BENAR
-Secara pembeli awam: ❌ TERLALU SINGKAT
-
-Masalah yang sering muncul:
-
-* “Node.js itu apa?”
-* “env.local itu di mana?”
-* “kok gak bisa tinggal klik?”
-* “API key kok gak ada?”
-
----
-
-## 2️⃣ README Versi JUALAN (WAJIB KAMU PAKAI)
-
-Ini **versi yang seharusnya kamu sertakan di ZIP**
-👉 nama filenya: **`README_CARA_PAKAI.txt` atau `.md`**
-
-⬇️ **COPY–PASTE AMAN**
-
----
-
-# 📦 CARA MENJALANKAN TOOLS (WAJIB DIBACA)
+# CARA MENJALANKAN TOOLS (WAJIB DIBACA)
 
 Tools ini menggunakan **Gemini AI (BYOK / Bring Your Own Key)**.
 Artinya: **API key TIDAK termasuk**, pembeli wajib menggunakan **API key sendiri**.
 
----
 
-## 🔧 SYARAT SEBELUM JALAN
+## SYARAT SEBELUM JALAN
 
 Pastikan di komputer kamu sudah ada:
 
@@ -57,17 +16,15 @@ Pastikan di komputer kamu sudah ada:
 2. **Gemini API Key**
    Ambil gratis di Google AI Studio
 
----
 
-## 📂 LANGKAH 1 — EXTRACT FILE
+## LANGKAH 1 — EXTRACT FILE
 
 1. Download file **.zip**
 2. Extract ke folder (bebas)
 3. Buka folder hasil extract
 
----
 
-## 📦 LANGKAH 2 — INSTALL DEPENDENCY
+## LANGKAH 2 — INSTALL DEPENDENCY
 
 1. Buka **Terminal / CMD / PowerShell**
 2. Masuk ke folder project
@@ -79,10 +36,9 @@ npm install
 
 Tunggu sampai selesai (hanya sekali).
 
----
 
 
-## ▶️ LANGKAH 3 — JALANKAN TOOLS
+## LANGKAH 3 — JALANKAN TOOLS
 
 Di terminal yang sama, jalankan:
 
