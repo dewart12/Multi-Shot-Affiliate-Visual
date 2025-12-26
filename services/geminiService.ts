@@ -86,8 +86,10 @@ const cropImageLocally = (base64Image: string, index: number): Promise<string> =
       const pieceWidth = img.width / cols;
       const pieceHeight = img.height / rows;
 
-      // Padding logic
-      const padding = 10; 
+      // Use proportional padding to maintain aspect ratio and avoid distortion.
+      // 5% padding ensures we clear grid lines without squeezing the image content unproportionally.
+      const paddingX = pieceWidth * 0.05; 
+      const paddingY = pieceHeight * 0.05;
 
       const colIndex = index % cols;
       const rowIndex = Math.floor(index / cols);
@@ -105,10 +107,10 @@ const cropImageLocally = (base64Image: string, index: number): Promise<string> =
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
 
-      const sourceX = (colIndex * pieceWidth) + padding;
-      const sourceY = (rowIndex * pieceHeight) + padding;
-      const sourceW = pieceWidth - (padding * 2);
-      const sourceH = pieceHeight - (padding * 2);
+      const sourceX = (colIndex * pieceWidth) + paddingX;
+      const sourceY = (rowIndex * pieceHeight) + paddingY;
+      const sourceW = pieceWidth - (paddingX * 2);
+      const sourceH = pieceHeight - (paddingY * 2);
 
       ctx.drawImage(
         img,
@@ -204,38 +206,101 @@ ${brandingLine}
 export const generateStoryboardGrid = async (baseImage: string, text: string, style: string, instruction: string = ""): Promise<string> => {
   return callWithRetry(async (ai) => {
     
-    // Check if branding text is provided. If not, explicitly ask to NOT generate text.
     const brandingLine = text && text.trim().length > 0
       ? `- BRANDING: Neon sign "${text}" in background.`
       : `- BRANDING: NO TEXT. Do not generate any text or neon signs in the background.`;
 
-    // Heuristic for product-focused vs fashion-focused
-    const lowerInstr = instruction.toLowerCase();
-    // Keywords covering: gadget, elektronik, home living, aksesoris
-    const isGadgetOrHome = /gadget|phone|tablet|electronic|laptop|camera|home|living|table|furniture|accessory|accessories|watch|jewelry|bag|shoe|footwear|sneaker|product|item|object|aksesoris/i.test(lowerInstr);
+    const lowerInstr = (instruction + " " + (text || "")).toLowerCase();
+    
+    // --- SMART CATEGORIZATION ---
+    let category = 'GENERAL_FASHION';
+    
+    // 1. BEAUTY & COSMETICS (Lipstick, Makeup, Skincare) - Needs Extreme Macro
+    if (/lipstick|lipstik|mascara|eyeliner|blush|cosmetic|kosmetik|makeup|skincare|serum|cream|wajah|muka/i.test(lowerInstr)) {
+        category = 'BEAUTY_COSMETIC';
+    } 
+    // 2. LUXURY & JEWELRY (Watch, Ring, Necklace, Glasses) - Needs Macro & Elegance
+    else if (/watch|jam|jewelry|perhiasan|ring|cincin|necklace|kalung|earring|anting|glasses|kacamata|spectacles/i.test(lowerInstr)) {
+         category = 'LUXURY_ACCESSORY';
+    }
+    // 3. HANDHELD GADGETS & BAGS (Phone, Bag, Wallet) - Needs Hand Interaction
+    else if (/phone|hp|handphone|mobile|gadget|tablet|camera|kamera|bag|tas|handbag|tote|purse|wallet|dompet/i.test(lowerInstr)) {
+        category = 'HANDHELD_PRODUCT';
+    } 
+    // 4. FOOTWEAR (Shoes, Sandals) - Needs Low angles
+    else if (/shoe|sepatu|sneaker|boots|sandal|heels|footwear/i.test(lowerInstr)) {
+        category = 'FOOTWEAR';
+    }
+    // 5. APPAREL (Clothes, Hijab, Jackets) - Needs Fit & Texture
+    else if (/mukena|hijab|kerudung|gamis|abaya|koko|shirt|kemeja|t-shirt|kaos|jacket|jaket|hoodie|sweater|coat|blazer|dress|gaun|pants|celana|jeans|skirt|rok/i.test(lowerInstr)) {
+        category = 'APPAREL';
+    }
+    
+    // --- TAILORED SHOT LISTS FOR PROMOTION ---
+    let shotList = "";
+    
+    if (category === 'BEAUTY_COSMETIC') {
+        shotList = `
+        STRATEGY: COSMETIC ADVERTISING CAMPAIGN (FOCUS ON PIGMENT & APPLICATION).
+        - Row 1 (PRODUCT MACRO): Extreme close-up of the product (lipstick bullet, cream texture). Background blurred.
+        - Row 2 (APPLICATION): Model applying the product to lips/face. Focus strictly on the application area.
+        - Row 3 (FINAL LOOK): Model holding the product next to their face, showing the result.`;
+    } else if (category === 'LUXURY_ACCESSORY') {
+        shotList = `
+        STRATEGY: HIGH-END LUXURY COMMERCIAL (FOCUS ON SHINE & DETAIL).
+        - Row 1 (HERO MACRO): Extreme close-up of the watch dial / jewelry detail. Show light reflections.
+        - Row 2 (ON BODY): Focused shot on the Wrist (for watch) or Neck/Ears (for jewelry). Shallow depth of field.
+        - Row 3 (ELEGANCE): Model posing elegantly with hand placement emphasizing the accessory.`;
+    } else if (category === 'HANDHELD_PRODUCT') {
+        shotList = `
+        STRATEGY: TECH & LIFESTYLE PROMOTION (FOCUS ON PRODUCT DESIGN).
+        - Row 1 (HERO PRODUCT): Clean shot of the product in hand or floating. Show logo and sleek design.
+        - Row 2 (INTERACTION): Model using the device (e.g. taking a selfie, scrolling). Product MUST be visible.
+        - Row 3 (LIFESTYLE): Model in environment, but the product is the clear focal point (in hand or on table).`;
+    } else if (category === 'FOOTWEAR') {
+        shotList = `
+        STRATEGY: FOOTWEAR CAMPAIGN (FOCUS ON STYLE & GROUNDING).
+        - Row 1 (PRODUCT DETAIL): Close-up of the shoe on the ground or floating. Show texture/material.
+        - Row 2 (ON FEET): Low-angle shot of model walking or standing. Focus on legs and shoes.
+        - Row 3 (FULL LOOK): Full body shot where the shoes complement the outfit.`;
+    } else if (category === 'APPAREL') {
+        shotList = `
+        STRATEGY: FASHION CATALOG (FOCUS ON FABRIC, FIT & DRAPE).
+        - Row 1 (FABRIC DETAIL): Close-up on the collar, buttons, or fabric pattern/texture.
+        - Row 2 (UPPER BODY): Half-body shot showing how the garment fits the shoulders and chest.
+        - Row 3 (FULL SILHOUETTE): Full-body shot showing the movement and fall of the fabric.`;
+    } else {
+        // Fallback
+        shotList = `
+        STRATEGY: COMMERCIAL PRODUCT SHOWCASE.
+        - Row 1: Close-up details of the key product features.
+        - Row 2: Model interacting with the product naturally.
+        - Row 3: Dynamic lifestyle shot featuring the product.`;
+    }
 
-    const basePrompt = isGadgetOrHome 
-        ? `PROFESSIONAL 3x3 PRODUCT LIFESTYLE STORYBOARD:
-- FOCUS: Showcase the PRODUCT interaction and lifestyle usage.
-- COMPOSITION: 
-  * 3x Close-ups of the product (hands holding it, or on surface).
-  * 3x Medium shots of model using/wearing the product.
-  * 3x Wide/Environmental shots showing the product in the scene.
-- CONSISTENCY: Keep the Model and Product identical to input.
-- ANGLES: Use variety of angles (Overhead, Eye-level, Low-angle).
-- STYLE: ${style}
-${brandingLine}
-- OUTPUT: 3x3 Grid Image, 9:16 Aspect Ratio, High Res.
-- CRITICAL: Add thin solid black divider lines.`
-        : `PROFESSIONAL 3x3 FASHION STORYBOARD:
-- FOCUS: Model poses and outfit presentation.
-- COMPOSITION: Generate 9 DISTINCT poses.
-- ANGLES: Mix of Close-up (Portrait), Medium (Waist-up), and Full-body shots.
-- IDENTITY CONSISTENCY: The face in all 9 panels MUST match the input person exactly.
-- STYLE: ${style}
-${brandingLine}
-- OUTPUT: 3x3 Grid Image, 9:16 Aspect Ratio, High Res.
-- CRITICAL: Add thin solid black divider lines.`;
+    const contextInstruction = instruction ? `USER CONTEXT: ${instruction}` : "";
+
+    const basePrompt = `
+    COMMERCIAL PRODUCT PHOTOGRAPHY STORYBOARD (3x3 GRID)
+    
+    INPUT IMAGE: This is the **MASTER REFERENCE (Source of Truth)**.
+    GOAL: Create a promotional storyboard CAMPAIGN for the specific PRODUCT shown in the Input Image.
+    
+    ${contextInstruction}
+    
+    CRITICAL CONSISTENCY RULES:
+    1. **PRODUCT INTEGRITY**: The product in the Input Image MUST NOT CHANGE. Use the EXACT same design, color, and logo in all 9 panels.
+    2. **MODEL IDENTITY**: The model's face and hair must remain consistent with the Input Image.
+    3. **PROMOTIONAL FOCUS**: This is NOT a generic photoshoot. It is an ADVERTISEMENT for the product.
+    
+    COMPOSITION PLAN (${category}):
+    ${shotList}
+    
+    STYLE: ${style}. High-end Commercial Advertisement. Professional Studio Lighting.
+    ${brandingLine}
+    
+    OUTPUT SPEC: High-resolution 3x3 grid image with thin black dividers. Aspect Ratio 9:16.
+    `;
 
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
@@ -245,7 +310,6 @@ ${brandingLine}
           { text: basePrompt }
         ]
       },
-      // Using 9:16 Aspect Ratio to match the final vertical output format
       config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
     });
     for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -258,45 +322,8 @@ ${brandingLine}
 // --- MAIN EXTRACTION LOGIC ---
 export const extractCell = async (gridImage: string, index: number, referenceImage?: string): Promise<string> => {
   try {
-    const croppedLowRes = await cropImageLocally(gridImage, index);
-
-    return callWithRetry(async (ai) => {
-      const parts: any[] = [];
-      
-      // If reference image provided, add it first as strict guidance
-      if (referenceImage) {
-        parts.push({ inlineData: { data: referenceImage.split(',')[1], mimeType: 'image/png' } });
-      }
-      
-      parts.push({ inlineData: { data: croppedLowRes.split(',')[1], mimeType: 'image/png' } });
-      
-      const prompt = referenceImage 
-        ? `TASK: HIGH-FIDELITY RESTORATION.
-Input 1: REFERENCE FACE (Strict Identity Source).
-Input 2: LOW-RES CROP (Target to upscale).
-GOAL: Upscale Input 2 to 1K resolution.
-CRITICAL: Reconstruct the face in Input 2 to perfectly match the identity in Input 1.
-Preserve the pose, expression, and product from Input 2.`
-        : `IMAGE RESTORATION TASK:
-- INPUT: A low-resolution crop from a storyboard.
-- GOAL: Upscale this to a sharp, high-quality 9:16 portrait.
-- STRICT RULE: Do NOT change the pose, face expression, or product details. Just add details, fix blur, and improve lighting.
-- OUTPUT: 1K Resolution, Photorealistic.`;
-
-      parts.push({ text: prompt });
-
-      const response = await ai.models.generateContent({
-        model: PRO_IMAGE_MODEL,
-        contents: { parts },
-        config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
-      });
-
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
-      }
-      return croppedLowRes; 
-    });
-
+    // DIRECT CROP ONLY to prevent hallucinations during slice.
+    return await cropImageLocally(gridImage, index);
   } catch (error) {
     console.error("Extract error:", error);
     throw new Error("FAILED_EXTRACTION");

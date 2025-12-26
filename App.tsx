@@ -393,6 +393,10 @@ const App: React.FC = () => {
     }
     setLoadingMsg("");
   };
+  
+  const onRegenerateGrid = async () => {
+      onGridClick(); // Reuse the existing grid generation logic
+  };
 
   const onFinalRenderClick = async () => {
     if (!state.storyboardGrid) return;
@@ -400,6 +404,10 @@ const App: React.FC = () => {
     setQuotaError(null);
     for (let i = 0; i < 9; i++) {
       setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === i ? { ...s, isExtracting: true } : s) }));
+      
+      // Artificial delay for UI smoothness since cropping is now instant
+      await new Promise(r => setTimeout(r, 300));
+
       try {
         // Pass modelImage (reference face) to extraction
         const img = await extractCell(state.storyboardGrid!, i, state.modelImage || undefined);
@@ -775,9 +783,19 @@ const App: React.FC = () => {
             <div className="bg-[#0c0c0e] p-4 md:p-6 rounded-[3rem] md:rounded-[4.5rem] w-full max-w-md mb-8 md:mb-12 shadow-2xl border border-white/5">
               <img src={state.storyboardGrid!} className="rounded-[2.5rem] md:rounded-[3.5rem] w-full aspect-[9/16]" />
             </div>
-            <button onClick={onFinalRenderClick} className="w-full md:w-auto bg-[#1d4ed8] hover:bg-blue-600 px-12 md:px-24 py-5 md:py-6 rounded-full font-black uppercase tracking-[0.2em] text-[12px] shadow-2xl">
-              Proceed to Final Render
-            </button>
+            
+            <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                <button 
+                  onClick={onRegenerateGrid} 
+                  className="w-full md:w-auto bg-white/5 hover:bg-white/10 border border-white/10 px-10 py-5 rounded-full font-black uppercase tracking-[0.2em] text-[11px] transition-colors flex items-center justify-center gap-2 text-zinc-400 hover:text-white"
+                >
+                  <i className="fa-solid fa-rotate-right"></i>
+                  Regenerate Grid
+                </button>
+                <button onClick={onFinalRenderClick} className="w-full md:w-auto bg-[#1d4ed8] hover:bg-blue-600 px-12 md:px-24 py-5 md:py-6 rounded-full font-black uppercase tracking-[0.2em] text-[12px] shadow-2xl">
+                  Proceed to Final Render
+                </button>
+            </div>
           </div>
         )}
 
