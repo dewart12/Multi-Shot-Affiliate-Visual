@@ -383,7 +383,8 @@ const App: React.FC = () => {
       const res = await generateStoryboardGrid(
         state.combinedImage, 
         state.brandingText, // Removed 'LUXE' fallback to allow empty text
-        state.stylePrompt || "Cinematic"
+        state.stylePrompt || "Cinematic",
+        state.promptInstruction // Added argument for context awareness
       );
       setState(prev => ({ ...prev, storyboardGrid: res }));
       setStep(AppStep.STORYBOARD);
@@ -809,9 +810,26 @@ const App: React.FC = () => {
                   <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-zinc-600">Shot Selection & Motion Export</p>
                 </div>
                 
-                {/* NEW SCI-FI PROGRESS BAR */}
-                <div className="w-full xl:w-2/5">
+                {/* NEW SCI-FI PROGRESS BAR & BILLING INFO */}
+                <div className="w-full xl:w-2/5 flex flex-col gap-3">
                    <SciFiProgressBar progress={state.extractionProgress} />
+                   
+                   {!useCustomKey && (
+                     <div className="bg-[#0f172a]/50 border border-blue-500/20 rounded-lg p-3 flex items-start gap-3 animate-in">
+                       <div className="p-1.5 bg-blue-500/10 rounded-md">
+                         <i className="fa-solid fa-file-invoice-dollar text-blue-400 text-xs"></i>
+                       </div>
+                       <div>
+                         <h4 className="text-[9px] font-black uppercase tracking-widest text-blue-300 mb-0.5">
+                           Cloud Project Billing Active
+                         </h4>
+                         <p className="text-[9px] text-zinc-400 font-medium leading-relaxed">
+                           Estimated Cost & Credit Usage: Video generation is calculated per minute. 
+                           <span className="block text-zinc-500 mt-0.5">Check your Google Cloud Console for real-time billing details.</span>
+                         </p>
+                       </div>
+                     </div>
+                   )}
                 </div>
               </div>
 

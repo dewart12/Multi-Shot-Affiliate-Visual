@@ -201,7 +201,7 @@ ${brandingLine}
   return successful;
 };
 
-export const generateStoryboardGrid = async (baseImage: string, text: string, style: string): Promise<string> => {
+export const generateStoryboardGrid = async (baseImage: string, text: string, style: string, instruction: string = ""): Promise<string> => {
   return callWithRetry(async (ai) => {
     
     // Check if branding text is provided. If not, explicitly ask to NOT generate text.
@@ -209,18 +209,40 @@ export const generateStoryboardGrid = async (baseImage: string, text: string, st
       ? `- BRANDING: Neon sign "${text}" in background.`
       : `- BRANDING: NO TEXT. Do not generate any text or neon signs in the background.`;
 
+    // Heuristic for product-focused vs fashion-focused
+    const lowerInstr = instruction.toLowerCase();
+    // Keywords covering: gadget, elektronik, home living, aksesoris
+    const isGadgetOrHome = /gadget|phone|tablet|electronic|laptop|camera|home|living|table|furniture|accessory|accessories|watch|jewelry|bag|shoe|footwear|sneaker|product|item|object|aksesoris/i.test(lowerInstr);
+
+    const basePrompt = isGadgetOrHome 
+        ? `PROFESSIONAL 3x3 PRODUCT LIFESTYLE STORYBOARD:
+- FOCUS: Showcase the PRODUCT interaction and lifestyle usage.
+- COMPOSITION: 
+  * 3x Close-ups of the product (hands holding it, or on surface).
+  * 3x Medium shots of model using/wearing the product.
+  * 3x Wide/Environmental shots showing the product in the scene.
+- CONSISTENCY: Keep the Model and Product identical to input.
+- ANGLES: Use variety of angles (Overhead, Eye-level, Low-angle).
+- STYLE: ${style}
+${brandingLine}
+- OUTPUT: 3x3 Grid Image, 9:16 Aspect Ratio, High Res.
+- CRITICAL: Add thin solid black divider lines.`
+        : `PROFESSIONAL 3x3 FASHION STORYBOARD:
+- FOCUS: Model poses and outfit presentation.
+- COMPOSITION: Generate 9 DISTINCT poses.
+- ANGLES: Mix of Close-up (Portrait), Medium (Waist-up), and Full-body shots.
+- IDENTITY CONSISTENCY: The face in all 9 panels MUST match the input person exactly.
+- STYLE: ${style}
+${brandingLine}
+- OUTPUT: 3x3 Grid Image, 9:16 Aspect Ratio, High Res.
+- CRITICAL: Add thin solid black divider lines.`;
+
     const response = await ai.models.generateContent({
       model: PRO_IMAGE_MODEL,
       contents: {
         parts: [
           { inlineData: { data: baseImage.split(',')[1], mimeType: 'image/png' } },
-          { text: `PROFESSIONAL 3x3 STORYBOARD GRID:
-- Use the provided person. Generate 9 DISTINCT poses.
-- NO REPETITION. Use Close-up, Medium, Full-body shots.
-- IDENTITY CONSISTENCY: The face in all 9 panels MUST match the input person exactly.
-${brandingLine}
-- OUTPUT: 3x3 Grid Image, 9:16 Aspect Ratio, High Res.
-- CRITICAL: Add thin solid black divider lines.` }
+          { text: basePrompt }
         ]
       },
       // Using 9:16 Aspect Ratio to match the final vertical output format
