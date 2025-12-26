@@ -1,20 +1,47 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
-# Run and deploy your AI Studio app
+## 🚀 Cara Jalankan Project Lokal (Tanpa Git)
 
-This contains everything you need to run your app locally.
+### **Download & Extract**
 
-View your app in AI Studio: https://ai.studio/apps/drive/1dF2_d9iIZfuPrM9FAQNNhtPER2IOQh4N
-
-## Run Locally
-
-**Prerequisites:**  Node.js
+* **Download ZIP** dari GitHub → Extract ke folder lokal kamu.
+  Kamu **tidak perlu Git** untuk ini — cukup klik *Code → Download ZIP* dan extract.
 
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+
+###  **Install Dependensi**
+
+Project ini pakai **Node.js** (ada `package.json`). Jadi setelah extract, buka terminal di folder tersebut dan jalankan:
+
+```bash
+npm install
+```
+
+Ini akan install semua dependency yang dibutuhkan. ([GitHub][1])
+
+💡 **Wajib punya Node.js terinstal** di komputer kamu.
+
+
+### **Jalankan App**
+
+Kalau semua sudah install + API key siap, tinggal run:
+
+```bash
+npm run dev
+```
+
+Ini akan nge-start server lokal (biasanya di [http://localhost:5173/](http://localhost:5173/) atau serupa). ([GitHub][1])
+
+
+
+## 📌 Catatan Penting
+
+✅ **Bisa dijalankan lokal tanpa git**
+Selama:
+
+* Node.js terinstall
+* Dependencies terpasang
+* API key diset
+
+❌ **Tidak bisa hanya extract dan langsung klik file HTML**
+Karena project ini butuh bundler dev server (`vite`) untuk jalan.
+
