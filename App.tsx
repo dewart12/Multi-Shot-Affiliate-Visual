@@ -10,7 +10,8 @@ import {
   generateSceneVideo,
   upscaleScene,
   repairImage,
-  editSceneImage, // Import new edit function
+  editSceneImage,
+  regenerateSceneFromReference, // Import the new function
   validateApiKey 
 } from './services/geminiService.ts';
 
@@ -306,6 +307,46 @@ const App: React.FC = () => {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  // --- NEW: Handle Upload for Reference Regeneration ---
+  const handleSceneReferenceUpload = (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const base64 = ev.target?.result as string;
+      if (!base64) return;
+
+      // Trigger regeneration - show loading state on the scene
+      setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, isEditing: true } : s) }));
+      
+      try {
+        // Determine intelligent prompt based on row position to maintain storyboard flow
+        const row = Math.floor(idx / 3);
+        const defaultPrompts = [
+            "Close-up product detail shot, macro photography, sharp focus",
+            "Medium shot, product interaction, holding or using the product naturally",
+            "Lifestyle context shot, cinematic environment, product in scene"
+        ];
+        const userPrompt = state.editPrompts[idx] || state.promptInstruction || "";
+        const finalPrompt = `${defaultPrompts[row]}. ${userPrompt}`;
+
+        const newImage = await regenerateSceneFromReference(base64, finalPrompt, state.stylePrompt);
+        
+        setState(prev => ({ 
+            ...prev, 
+            scenes: prev.scenes.map(s => s.id === idx ? { ...s, image: newImage, isEditing: false } : s) 
+        }));
+      } catch (error) {
+        handleError(error);
+        setState(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === idx ? { ...s, isEditing: false } : s) }));
+      }
+    };
+    reader.readAsDataURL(file);
+    // Reset value so same file can be selected again if needed
+    e.target.value = '';
   };
 
   const handleError = (e: any) => {
@@ -934,8 +975,14 @@ const App: React.FC = () => {
 
                              <div className="w-px h-4 bg-white/20 mx-1"></div>
 
+                             {/* NEW: Upload Reference for Fix */}
+                             <label className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-blue-600 transition-colors text-zinc-400 hover:text-white cursor-pointer" title="Upload Reference to Fix">
+                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleSceneReferenceUpload(e, idx)} />
+                                <i className="fa-solid fa-upload text-[12px]"></i>
+                             </label>
+
                              {/* Repair */}
-                             <button onClick={() => onRepair(idx)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-blue-600 transition-colors text-zinc-400 hover:text-white">
+                             <button onClick={() => onRepair(idx)} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-blue-600 transition-colors text-zinc-400 hover:text-white" title="Auto Repair">
                                <i className="fa-solid fa-wand-magic-sparkles text-[12px]"></i>
                              </button>
 

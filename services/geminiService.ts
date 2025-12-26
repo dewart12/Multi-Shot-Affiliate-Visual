@@ -379,6 +379,36 @@ CRITICAL: Ensure the face matches Input 1. Correct anatomy and lighting.`
   });
 };
 
+// --- NEW: REGENERATE SCENE WITH REFERENCE (For Fixing Inconsistent Products) ---
+export const regenerateSceneFromReference = async (
+  referenceBase64: string, 
+  prompt: string, 
+  style: string
+): Promise<string> => {
+  return callWithRetry(async (ai) => {
+    const response = await ai.models.generateContent({
+      model: PRO_IMAGE_MODEL,
+      contents: {
+        parts: [
+          { inlineData: { data: referenceBase64.split(',')[1], mimeType: 'image/png' } },
+          { text: `REGENERATE SCENE WITH REFERENCE:
+- REFERENCE IMAGE: Use this object/person as the PRIMARY SUBJECT.
+- TASK: Create a new scene featuring this subject.
+- CONTEXT: ${prompt}
+- STYLE: ${style}
+- CONSTRAINT: The subject from the image must be clearly visible and preserved.
+- OUTPUT: Photorealistic 9:16 image.` }
+        ]
+      },
+      config: { imageConfig: { aspectRatio: "9:16", imageSize: "1K" } }
+    });
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+    }
+    throw new Error("FAILED_REGEN");
+  });
+};
+
 // --- NEW: EDIT SCENE (Pose, Gesture, Angle) ---
 export const editSceneImage = async (imageBase64: string, prompt: string, referenceImage?: string): Promise<string> => {
   return callWithRetry(async (ai) => {
